@@ -1,0 +1,6 @@
+{
+  "name": "Innovation Plus",
+  "description": "Innovation Plus - Private High-Quality Ad-Free Streaming Platform for Animations, 2D Videos, Shorts & Music with encrypted offline playback, real-time analytics, and member management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

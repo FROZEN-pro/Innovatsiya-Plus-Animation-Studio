@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /users/{userId} {
+      // Users can read/write their own data. Admins can read all.
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // Only the user or an admin can create/update their profile
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /videos/{videoId} {
+      // Anyone logged in can read videos
+      allow read: if request.auth != null;
+      // Only admins can write videos
+      allow write: if isAdmin();
+      // Allow view counts to be incremented by anyone logged in
+      allow update: if request.auth != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views']);
+    }
+  }
+}
