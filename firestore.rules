@@ -1,25 +1,107 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to check if user is admin
+    
+    // Default Deny All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Helpers
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    
     function isAdmin() {
-      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // For this applet, assume users with a specific role in their user document are admins
+      // Adjust this as necessary based on app requirements. 
+      return request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation Blueprint for User
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'role', 'subscriptionStatus'])
+        && data.uid is string && data.uid.size() <= 128
+        && data.role is string && data.role in ['user', 'admin']
+        && data.subscriptionStatus is string && data.subscriptionStatus in ['active', 'inactive', 'banned', 'trial']
+        && data.uid == request.auth.uid; // Identity enforcement
+    }
+
+    // Validation Blueprint for WatchHistory
+    function isValidWatchHistory(data) {
+      return data.keys().hasAll(['videoId', 'lastWatchedAt'])
+        && data.videoId is string && data.videoId.size() <= 128
+        && data.lastWatchedAt is number
+        && (!('progressSeconds' in data) || data.progressSeconds is number)
+        && (!('completed' in data) || data.completed is bool);
     }
 
     match /users/{userId} {
-      // Users can read/write their own data. Admins can read all.
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      // Only the user or an admin can create/update their profile
-      allow write: if request.auth != null && request.auth.uid == userId;
+      
+      allow create: if isSignedIn() && request.auth.uid == userId
+                    && isValidUser(incoming());
+                    
+      allow update: if isSignedIn() && request.auth.uid == userId
+                    && isValidUser(incoming())
+                    && (
+                      // Only allow specific updates for users, or allow admins full access
+                      (isAdmin()) ||
+                      (incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'language', 'telegramUsername', 'biometricEnabled']))
+                    )
+                    && incoming().uid == existing().uid
+                    && incoming().role == existing().role; // Users can't escalate privileges
+                    
+      allow delete: if isAdmin();
+
+      match /watchHistory/{videoId} {
+        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+        
+        allow create: if isSignedIn() && request.auth.uid == userId
+                      && isValidWatchHistory(incoming());
+                      
+        allow update: if isSignedIn() && request.auth.uid == userId
+                      && isValidWatchHistory(incoming())
+                      && incoming().videoId == existing().videoId;
+                      
+        allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      }
+    }
+
+    // Validation Blueprint for Video
+    function isValidVideo(data) {
+      return data.keys().hasAll(['id', 'title', 'description', 'videoUrl', 'thumbnailUrl', 'category', 'views'])
+        && data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 200
+        && data.description is string && data.description.size() <= 2000
+        && data.videoUrl is string && data.videoUrl.size() <= 500
+        && data.thumbnailUrl is string && data.thumbnailUrl.size() <= 500
+        && data.category is string && data.category.size() <= 50
+        && data.views is number;
     }
 
     match /videos/{videoId} {
-      // Anyone logged in can read videos
       allow read: if request.auth != null;
-      // Only admins can write videos
-      allow write: if isAdmin();
-      // Allow view counts to be incremented by anyone logged in
-      allow update: if request.auth != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views']);
+      
+      allow create: if isAdmin() && isValidVideo(incoming());
+      
+      allow update: if request.auth != null
+                    && isValidVideo(incoming())
+                    && (
+                      (isAdmin()) ||
+                      // Anyone logged in can increment views
+                      (incoming().diff(existing()).affectedKeys().hasOnly(['views']))
+                    );
+                    
+      allow delete: if isAdmin();
     }
   }
 }

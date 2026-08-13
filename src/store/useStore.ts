@@ -12,11 +12,10 @@ interface AppState {
   language: LanguageCode;
   setLanguage: (lang: LanguageCode) => void;
   
-  highContrast: boolean;
-  toggleHighContrast: () => void;
+  darkMode: boolean;
+  toggleDarkMode: () => void;
   
-  textSize: 'normal' | 'large' | 'xlarge';
-  setTextSize: (size: 'normal' | 'large' | 'xlarge') => void;
+  
   
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -40,6 +39,9 @@ interface AppState {
   
   isPwaModalOpen: boolean;
   setPwaModalOpen: (open: boolean) => void;
+  appSettings: any;
+  setAppSettings: (settings: any) => void;
+
 }
 
 // Helper to load offline vault from localStorage
@@ -53,8 +55,8 @@ const loadInitialVault = (): OfflineVaultItem[] => {
 };
 
 const savedLang = (localStorage.getItem('innovation_plus_lang') as LanguageCode) || 'en';
-const savedContrast = localStorage.getItem('innovation_plus_contrast') === 'true';
-const savedTextSize = (localStorage.getItem('innovation_plus_textsize') as 'normal' | 'large' | 'xlarge') || 'normal';
+const savedDarkMode = localStorage.getItem('innovation_plus_darkmode') === 'true';
+
 
 export const useAppStore = create<AppState>((set, get) => ({
   language: savedLang,
@@ -63,18 +65,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ language: lang });
   },
   
-  highContrast: savedContrast,
-  toggleHighContrast: () => {
-    const next = !get().highContrast;
-    localStorage.setItem('innovation_plus_contrast', String(next));
-    set({ highContrast: next });
+  darkMode: savedDarkMode,
+  toggleDarkMode: () => {
+    const next = !get().darkMode;
+    localStorage.setItem('innovation_plus_darkmode', String(next));
+    set({ darkMode: next });
   },
   
-  textSize: savedTextSize,
-  setTextSize: (size) => {
-    localStorage.setItem('innovation_plus_textsize', size);
-    set({ textSize: size });
-  },
+  
   
   searchQuery: '',
   setSearchQuery: (searchQuery) => set({ searchQuery }),
@@ -111,5 +109,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   isPwaModalOpen: false,
   setPwaModalOpen: (open) => set({ isPwaModalOpen: open }),
+
+  appSettings: null,
+  setAppSettings: (appSettings) => set({ appSettings }),
+
 }));
 

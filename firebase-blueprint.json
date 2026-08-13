@@ -1,0 +1,202 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile document",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "email": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256
+        },
+        "displayName": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 100
+        },
+        "photoURL": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "user",
+            "admin"
+          ]
+        },
+        "subscriptionStatus": {
+          "type": "string",
+          "enum": [
+            "active",
+            "inactive",
+            "banned",
+            "trial"
+          ]
+        },
+        "subscriptionTier": {
+          "type": "string",
+          "enum": [
+            "free",
+            "pro",
+            "vip"
+          ]
+        },
+        "isBanned": {
+          "type": "boolean"
+        },
+        "telegramUsername": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "biometricEnabled": {
+          "type": "boolean"
+        },
+        "language": {
+          "type": "string",
+          "maxLength": 10
+        },
+        "createdAt": {
+          "type": "number"
+        },
+        "lastLogin": {
+          "type": "number"
+        },
+        "totalWatchTimeMinutes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "uid",
+        "role",
+        "subscriptionStatus"
+      ]
+    },
+    "Video": {
+      "title": "Video",
+      "description": "Video metadata",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "videoUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "thumbnailUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "views": {
+          "type": "number"
+        },
+        "likes": {
+          "type": "number"
+        },
+        "duration": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "isHd": {
+          "type": "boolean"
+        },
+        "isEncrypted": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "number"
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 30
+          }
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "description",
+        "videoUrl",
+        "thumbnailUrl",
+        "category",
+        "views"
+      ]
+    },
+    "WatchHistory": {
+      "title": "WatchHistory",
+      "description": "User watch history record",
+      "type": "object",
+      "properties": {
+        "videoId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "lastWatchedAt": {
+          "type": "number"
+        },
+        "progressSeconds": {
+          "type": "number"
+        },
+        "completed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "videoId",
+        "lastWatchedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "User profiles"
+    },
+    "videos/{videoId}": {
+      "schema": {
+        "$ref": "#/entities/Video"
+      },
+      "description": "Video metadata available for all authenticated users"
+    },
+    "users/{userId}/watchHistory/{videoId}": {
+      "schema": {
+        "$ref": "#/entities/WatchHistory"
+      },
+      "description": "Watch history for a user"
+    }
+  }
+}

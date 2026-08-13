@@ -58,7 +58,7 @@ export default function AuthPage() {
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
-        className="z-10 text-center max-w-md w-full bg-[#0a0a0f]/80 border border-white/10 rounded-[36px] p-8 sm:p-10 backdrop-blur-2xl shadow-2xl relative overflow-hidden"
+        className={`z-10 text-center max-w-md w-full bg-[#0a0a0f]/80 border ${darkMode ? 'border-white/10' : 'border-black/10'} rounded-[36px] p-8 sm:p-10 backdrop-blur-2xl shadow-2xl relative overflow-hidden`}
       >
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-32 bg-orange-500/20 rounded-full blur-[80px] pointer-events-none" />
 
@@ -114,7 +114,7 @@ export default function AuthPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Subscriber Email"
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-xs text-white placeholder-white/40 focus:outline-none focus:border-orange-500 transition-all"
+                className={`w-full ${darkMode ? 'bg-white/5' : 'bg-black/5'} border ${darkMode ? 'border-white/10' : 'border-black/10'} rounded-2xl px-4 py-3 text-xs text-white placeholder-white/40 focus:outline-none focus:border-orange-500 transition-all`}
               />
               <input
                 type="password"
@@ -122,7 +122,7 @@ export default function AuthPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password"
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-xs text-white placeholder-white/40 focus:outline-none focus:border-orange-500 transition-all"
+                className={`w-full ${darkMode ? 'bg-white/5' : 'bg-black/5'} border ${darkMode ? 'border-white/10' : 'border-black/10'} rounded-2xl px-4 py-3 text-xs text-white placeholder-white/40 focus:outline-none focus:border-orange-500 transition-all`}
               />
               <button
                 type="submit"
@@ -135,7 +135,7 @@ export default function AuthPage() {
           ) : (
             <button
               onClick={() => setAuthMode('email')}
-              className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 py-3 rounded-2xl font-medium text-xs transition-all"
+              className={`w-full ${darkMode ? 'bg-white/5' : 'bg-black/5'} hover:bg-white/10 border ${darkMode ? 'border-white/10' : 'border-black/10'} text-white/80 py-3 rounded-2xl font-medium text-xs transition-all`}
             >
               Email & Password Sign In
             </button>
@@ -144,7 +144,7 @@ export default function AuthPage() {
         </div>
 
         {/* Security & Features Bar */}
-        <div className="grid grid-cols-3 gap-2 mt-8 pt-6 border-t border-white/10 text-[10px] font-bold uppercase tracking-wider text-white/50">
+        <div className={`grid grid-cols-3 gap-2 mt-8 pt-6 border-t ${darkMode ? 'border-white/10' : 'border-black/10'} text-[10px] font-bold uppercase tracking-wider text-white/50`}>
           <div className="flex flex-col items-center gap-1">
             <MonitorPlay size={18} className="text-orange-400" />
             <span>4K HDR</span>

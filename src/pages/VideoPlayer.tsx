@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import React from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, Share2, Check, Shield, Sparkles, Globe, Settings, Play } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -6,6 +7,8 @@ import { Video } from '../types';
 import { saveOfflineData, getOfflineData } from '../lib/encryption';
 import { useAppStore } from '../store/useStore';
 import { languages } from '../lib/i18n';
+import { db, auth } from '../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 export default function VideoPlayer() {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +21,28 @@ export default function VideoPlayer() {
   const [subtitleLang, setSubtitleLang] = useState<string>('en');
   const [subtitleText, setSubtitleText] = useState<string>('');
   const [relatedVideos, setRelatedVideos] = useState<Video[]>([]);
+  
+  const lastSyncTime = useRef<number>(0);
+
+  const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
+    const target = e.target as HTMLVideoElement;
+    const progressSeconds = target.currentTime;
+    const isCompleted = target.currentTime >= target.duration * 0.9; // 90% watched = complete
+    
+    const now = Date.now();
+    // Only sync every 10 seconds to save Firestore writes
+    if (now - lastSyncTime.current > 10000 || isCompleted) {
+      lastSyncTime.current = now;
+      if (auth.currentUser && id && !id.startsWith('vault_')) {
+        setDoc(doc(db, `users/${auth.currentUser.uid}/watchHistory/${id}`), {
+          videoId: id,
+          progressSeconds: Math.floor(progressSeconds),
+          completed: isCompleted,
+          lastWatchedAt: now
+        }, { merge: true }).catch(console.error);
+      }
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -112,10 +137,10 @@ export default function VideoPlayer() {
     <div className="min-h-screen bg-[#050508] text-white flex flex-col font-sans select-none">
       
       {/* Header */}
-      <div className="p-4 sm:p-6 flex items-center justify-between border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-md">
+      <div className={`p-4 sm:p-6 flex items-center justify-between border-b ${darkMode ? "border-white/10" : "border-black/10"} bg-[#0a0a0f]/80 backdrop-blur-md`}>
         <button 
           onClick={() => navigate('/dashboard')} 
-          className="flex items-center gap-2 text-white/60 hover:text-orange-400 font-bold text-xs uppercase tracking-wider transition-all"
+          className={`flex items-center gap-2 ${darkMode ? "text-white/60" : "text-black/60"} hover:text-orange-400 font-bold text-xs uppercase tracking-wider transition-all`}
         >
           <ArrowLeft size={18} /> Back to Dashboard
         </button>
@@ -137,7 +162,7 @@ export default function VideoPlayer() {
         >
           
           {/* Cinema Player Container */}
-          <div className="aspect-video w-full bg-black rounded-[32px] overflow-hidden shadow-2xl border border-white/10 relative group">
+          <div className={`aspect-video w-full bg-black rounded-[32px] overflow-hidden shadow-2xl border ${darkMode ? "border-white/10" : "border-black/10"} relative group`}>
             <video 
               controls 
               autoPlay 
@@ -145,6 +170,7 @@ export default function VideoPlayer() {
               poster={video.thumbnailUrl}
               className="w-full h-full object-contain"
               controlsList="nodownload"
+              onTimeUpdate={handleTimeUpdate}
             />
 
             {/* Live Subtitle Overlay */}
@@ -152,7 +178,7 @@ export default function VideoPlayer() {
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-md px-4 py-1.5 rounded-xl border border-white/10 text-xs sm:text-sm text-yellow-300 font-medium text-center max-w-lg pointer-events-none"
+                className={`absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-md px-4 py-1.5 rounded-xl border ${darkMode ? "border-white/10" : "border-black/10"} text-xs sm:text-sm text-yellow-300 font-medium text-center max-w-lg pointer-events-none`}
               >
                 {subtitleText}
               </motion.div>
@@ -177,13 +203,13 @@ export default function VideoPlayer() {
               <div className="flex items-center gap-2 flex-wrap">
                 
                 {/* Quality Picker */}
-                <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-2xl p-1 text-xs">
+                <div className={`flex items-center gap-1 ${darkMode ? "bg-white/5" : "bg-black/5"} border ${darkMode ? "border-white/10" : "border-black/10"} rounded-2xl p-1 text-xs`}>
                   {(['4K', '1080p', '720p'] as const).map(q => (
                     <button
                       key={q}
                       onClick={() => setSelectedQuality(q)}
                       className={`px-2.5 py-1 rounded-xl text-[10px] font-mono font-bold transition-all ${
-                        selectedQuality === q ? 'bg-orange-500 text-black' : 'text-white/60 hover:text-white'
+                        selectedQuality === q ? 'bg-orange-500 text-black' : (darkMode ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black")
                       }`}
                     >
                       {q}
@@ -192,7 +218,7 @@ export default function VideoPlayer() {
                 </div>
 
                 {/* Subtitle Language Switcher */}
-                <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-2xl px-3 py-1 text-xs">
+                <div className={`flex items-center gap-1.5 ${darkMode ? "bg-white/5" : "bg-black/5"} border ${darkMode ? "border-white/10" : "border-black/10"} rounded-2xl px-3 py-1 text-xs`}>
                   <Globe size={14} className="text-amber-400" />
                   <select
                     value={subtitleLang}
@@ -226,9 +252,9 @@ export default function VideoPlayer() {
             </div>
 
             {/* Description Card */}
-            <div className="p-5 rounded-3xl bg-white/5 border border-white/10 text-xs text-white/80 leading-relaxed space-y-2">
+            <div className={`p-5 rounded-3xl ${darkMode ? "bg-white/5" : "bg-black/5"} border ${darkMode ? "border-white/10" : "border-black/10"} text-xs ${darkMode ? "text-white/80" : "text-black/80"} leading-relaxed space-y-2`}>
               <p className="font-medium text-white/90">{video.description}</p>
-              <div className="pt-2 border-t border-white/10 flex items-center gap-2 text-[10px] font-mono text-amber-400">
+              <div className={`pt-2 border-t ${darkMode ? "border-white/10" : "border-black/10"} flex items-center gap-2 text-[10px] font-mono text-amber-400`}>
                 <Sparkles size={12} />
                 <span>Private Subscriber HD Copy • Encrypted Stream Token Active</span>
               </div>
@@ -245,7 +271,7 @@ export default function VideoPlayer() {
           transition={{ duration: 0.5, delay: 0.2 }}
           className="space-y-4"
         >
-          <div className="flex items-center justify-between pb-2 border-b border-white/10">
+          <div className={`flex items-center justify-between pb-2 border-b ${darkMode ? "border-white/10" : "border-black/10"}`}>
             <h3 className="font-extrabold text-sm text-white flex items-center gap-2">
               <Sparkles size={16} className="text-amber-400" /> Related VIP Streams
             </h3>
@@ -260,7 +286,7 @@ export default function VideoPlayer() {
                 transition={{ delay: 0.3 + (idx * 0.1) }}
                 key={item.id}
                 onClick={() => navigate(`/play/${item.id}`)}
-                className="w-full flex gap-3 p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-left transition-all group"
+                className={`w-full flex gap-3 p-2.5 rounded-2xl ${darkMode ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10"} border ${darkMode ? "border-white/10" : "border-black/10"} text-left transition-all group`}
               >
                 <img src={item.thumbnailUrl} alt={item.title} className="w-24 h-16 rounded-xl object-cover shrink-0 group-hover:scale-105 transition-transform" />
                 <div className="overflow-hidden space-y-1">

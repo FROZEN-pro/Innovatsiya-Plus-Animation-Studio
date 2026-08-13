@@ -2,7 +2,7 @@ export type Role = 'user' | 'admin';
 export type SubscriptionTier = 'free' | 'pro' | 'vip';
 export type SubscriptionStatus = 'active' | 'inactive' | 'banned' | 'trial';
 export type ContentCategory = 'Animation' | '2D Video' | 'Short' | 'Music' | '3D Art' | 'Vault';
-export type LanguageCode = 'en' | 'es' | 'fr' | 'de' | 'ja' | 'zh' | 'ru' | 'uz';
+export type LanguageCode = 'en' | 'ru' | 'uz';
 
 export interface User {
   uid: string;

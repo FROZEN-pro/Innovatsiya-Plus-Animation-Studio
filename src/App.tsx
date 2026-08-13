@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from './lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { useAuthStore } from './store/useStore';
+import { useAuthStore, useAppStore } from './store/useStore';
 import { User } from './types';
 
 import AuthPage from './pages/AuthPage';
@@ -14,8 +14,20 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 
 export default function App() {
   const { setUser, setLoading } = useAuthStore();
+  const { setAppSettings, darkMode } = useAppStore();
 
   useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => setAppSettings(data))
+      .catch(console.error);
+      
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
@@ -48,7 +60,16 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [setUser, setLoading]);
+  }, [setUser, setLoading, setAppSettings]);
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
 
   return (
     <BrowserRouter>

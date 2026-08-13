@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
@@ -101,6 +102,44 @@ async function startServer() {
   });
 
   // Get Videos from Cloud SQL
+  app.get("/api/settings", async (req, res) => {
+    try {
+      const docRef = db.collection('appSettings').doc('main');
+      const docSnap = await docRef.get();
+      if (!docSnap.exists) {
+        const defaultSettings = {
+          heroTitle: "Premium Stream Experience",
+          heroSubtitle: "Handpicked HD creative masterwork for subscriber enjoyment.",
+          brandName: "INNOVATION+",
+          brandTag: "PRO"
+        };
+        await docRef.set(defaultSettings);
+        return res.json(defaultSettings);
+      }
+      return res.json(docSnap.data());
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  app.patch("/api/settings", requireAuth, async (req, res) => {
+    try {
+      // @ts-ignore
+      if (req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin only' });
+      }
+      const docRef = db.collection('appSettings').doc('main');
+      await docRef.set(req.body, { merge: true });
+      return res.json({ success: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to update settings" });
+    }
+  });
+
+  // existing /api/videos ...
+
   app.get("/api/videos", async (req, res) => {
     try {
       const allVideos = await db.select().from(videos).orderBy(desc(videos.createdAt));
@@ -244,12 +283,27 @@ async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: "custom", // Important: custom lets us handle HTML serving manually
     });
     app.use(vite.middlewares);
+    
+    app.use('*', async (req, res, next) => {
+      try {
+        const url = req.originalUrl;
+        let templatePath = url.startsWith('/admin') ? 'adminindex.html' : 'index.html';
+        const template = await fs.promises.readFile(path.resolve(process.cwd(), templatePath), 'utf-8');
+        const html = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+      } catch (e) {
+        next(e);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+    app.get('/admin*', (req, res) => {
+      res.sendFile(path.join(distPath, 'adminindex.html'));
+    });
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

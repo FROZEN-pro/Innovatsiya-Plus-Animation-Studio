@@ -3,6 +3,7 @@
   "appId": "1:713670526594:web:49751c6cb6e6be89b6d69b",
   "apiKey": "AIzaSyBna2YX8O29vrS4pWAu-CMOvAtNTlu0Dzk",
   "authDomain": "smiling-impulse-k5fd2.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-creativestream-fb45f129-812d-441f-a0a3-29fecbd27450",
   "storageBucket": "smiling-impulse-k5fd2.firebasestorage.app",
   "messagingSenderId": "713670526594",
   "measurementId": "",

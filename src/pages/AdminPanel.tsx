@@ -1,8 +1,8 @@
 import { useState, FormEvent, useRef, ChangeEvent, useEffect } from 'react';
-import { storage, getAccessToken, loginWithGoogle } from '../lib/firebase';
+import { storage, auth, getAccessToken, loginWithGoogle } from '../lib/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { motion } from 'motion/react';
-import { Wand2, UploadCloud, CheckCircle2, FileSpreadsheet, Users, Trash2, ShieldAlert, ShieldCheck, Film, Crown, RefreshCw } from 'lucide-react';
+import { Wand2, UploadCloud, CheckCircle2, FileSpreadsheet, Users, Trash2, ShieldAlert, ShieldCheck, Film, Crown, RefreshCw, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ResponsiveContainer, LineChart, Line, Tooltip } from 'recharts';
 import { Video } from '../types';
@@ -33,6 +33,7 @@ export default function AdminPanel() {
   const [success, setSuccess] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [exportingSheets, setExportingSheets] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   
   const [videos, setVideos] = useState<Video[]>([]);
   const [usersList, setUsersList] = useState<DBUser[]>([]);
@@ -50,8 +51,14 @@ export default function AdminPanel() {
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchVideos();
-    fetchUsers();
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setCurrentUser(user);
+      if (user) {
+        fetchVideos();
+        fetchUsers();
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   const fetchVideos = async () => {
@@ -68,7 +75,7 @@ export default function AdminPanel() {
 
   const fetchUsers = async () => {
     try {
-      const token = getAccessToken();
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch('/api/users', {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -104,7 +111,7 @@ export default function AdminPanel() {
   const handleDeleteVideo = async (id: number) => {
     if (!window.confirm('Delete this creative media stream?')) return;
     try {
-      const token = getAccessToken();
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`/api/videos/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
@@ -120,7 +127,7 @@ export default function AdminPanel() {
   const handleToggleUserRole = async (uid: string, currentRole: string) => {
     const nextRole = currentRole === 'admin' ? 'user' : 'admin';
     try {
-      const token = getAccessToken();
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`/api/users/${uid}/role`, {
         method: 'PATCH',
         headers: {
@@ -138,7 +145,7 @@ export default function AdminPanel() {
   const handleToggleUserBan = async (uid: string, currentStatus: string) => {
     const nextStatus = currentStatus === 'banned' ? 'active' : 'banned';
     try {
-      const token = getAccessToken();
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`/api/users/${uid}/status`, {
         method: 'PATCH',
         headers: {
@@ -212,6 +219,7 @@ export default function AdminPanel() {
           },
           sheets: [
             {
+              properties: { title: 'Analytics' },
               data: [
                 {
                   startRow: 0,
@@ -222,6 +230,56 @@ export default function AdminPanel() {
                       values: [
                         { userEnteredValue: { stringValue: d.day } },
                         { userEnteredValue: { numberValue: d.views } }
+                      ]
+                    }))
+                  ]
+                }
+              ]
+            },
+            {
+              properties: { title: 'Users' },
+              data: [
+                {
+                  startRow: 0,
+                  startColumn: 0,
+                  rowData: [
+                    { values: [
+                      { userEnteredValue: { stringValue: 'UID' } },
+                      { userEnteredValue: { stringValue: 'Email' } },
+                      { userEnteredValue: { stringValue: 'Role' } },
+                      { userEnteredValue: { stringValue: 'Status' } }
+                    ] },
+                    ...usersList.map(u => ({
+                      values: [
+                        { userEnteredValue: { stringValue: u.uid || '' } },
+                        { userEnteredValue: { stringValue: u.email || '' } },
+                        { userEnteredValue: { stringValue: u.role || '' } },
+                        { userEnteredValue: { stringValue: u.subscriptionStatus || '' } }
+                      ]
+                    }))
+                  ]
+                }
+              ]
+            },
+            {
+              properties: { title: 'Videos' },
+              data: [
+                {
+                  startRow: 0,
+                  startColumn: 0,
+                  rowData: [
+                    { values: [
+                      { userEnteredValue: { stringValue: 'ID' } },
+                      { userEnteredValue: { stringValue: 'Title' } },
+                      { userEnteredValue: { stringValue: 'Category' } },
+                      { userEnteredValue: { stringValue: 'Views' } }
+                    ] },
+                    ...videos.map(v => ({
+                      values: [
+                        { userEnteredValue: { stringValue: v.id || '' } },
+                        { userEnteredValue: { stringValue: v.title || '' } },
+                        { userEnteredValue: { stringValue: v.category || '' } },
+                        { userEnteredValue: { numberValue: v.views || 0 } }
                       ]
                     }))
                   ]
@@ -250,7 +308,7 @@ export default function AdminPanel() {
     e.preventDefault();
     try {
       setLoading(true);
-      const token = getAccessToken();
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch('/api/videos', {
         method: 'POST',
         headers: {
@@ -274,36 +332,46 @@ export default function AdminPanel() {
     }
   };
 
+  if (currentUser === null) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center p-4 ${darkMode ? 'bg-[#0a0a0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
+        <div className="text-center">
+          <ShieldAlert className="w-16 h-16 text-orange-500 mx-auto mb-4" />
+          <h2 className={`text-xl font-bold ${darkMode ? "text-white" : "text-black"} mb-2`}>Admin Access Required</h2>
+            <p className={`mb-6 ${darkMode ? "text-white/60" : "text-black/60"}`}>Please log in through the main application first.</p>
+          <a href="/" className="px-6 py-2 bg-orange-500 text-black font-bold rounded-full hover:bg-orange-400 transition-colors">Go to App</a>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#050508] text-white p-6 sm:p-8 font-sans select-none">
-      <div className="max-w-6xl mx-auto space-y-8">
+      <div className={`min-h-screen ${darkMode ? "bg-[#0a0a0f] text-white" : "bg-gray-50 text-gray-900"} p-6 sm:p-8 font-sans select-none`}>
+        <div className="max-w-6xl mx-auto space-y-8">
         
         {/* Header Bar */}
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-white/10"
-        >
+          className={`flex flex-wrap items-center justify-between gap-4 pb-6 border-b ${darkMode ? "border-white/10" : "border-black/10"}`}>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-3xl font-extrabold tracking-tight">Innovation Plus Studio</h1>
               <span className="bg-orange-500 text-black font-extrabold text-[10px] uppercase px-2 py-0.5 rounded-full">Admin</span>
             </div>
-            <p className="text-xs text-white/50">Content Management & Subscriber Studio</p>
+            <p className={`text-xs ${darkMode ? "text-white" : "text-black"}/50`}>Content Management & Subscriber Studio</p>
           </div>
 
           <div className="flex items-center gap-2">
             <button 
               onClick={() => { fetchVideos(); fetchUsers(); }}
-              className="p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all"
-              title="Refresh Studio Data"
+              className={`p-2.5 rounded-2xl ${darkMode ? "bg-white/5" : "bg-black/5"} hover:bg-white/10 ${darkMode ? "text-white" : "text-black"}/70 hover:${darkMode ? "text-white" : "text-black"} transition-all`} title="Refresh Studio Data"
             >
               <RefreshCw size={16} />
             </button>
             <Link 
               to="/dashboard" 
-              className="px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-wider text-white transition-all"
-            >
+              className={`px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-xs font-bold uppercase tracking-wider ${darkMode ? "text-white" : "text-black"} transition-all"}`}>
               Return to App
             </Link>
           </div>
@@ -314,22 +382,17 @@ export default function AdminPanel() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="flex items-center gap-2 border-b border-white/10 pb-3"
-        >
+          className={`flex items-center gap-2 border-b ${darkMode ? "border-white/10" : "border-black/10"} pb-3`}>
           <button
             onClick={() => setActiveTab('content')}
-            className={`px-5 py-2.5 rounded-2xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 transition-all ${
-              activeTab === 'content' ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20' : 'bg-white/5 text-white/60 hover:bg-white/10'
-            }`}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 transition-all ${activeTab === 'content' ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20' : (darkMode ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-black/5 text-black/60 hover:bg-black/10')}`}
           >
             <Film size={16} /> Media Publishing ({videos.length})
           </button>
 
           <button
             onClick={() => setActiveTab('users')}
-            className={`px-5 py-2.5 rounded-2xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 transition-all ${
-              activeTab === 'users' ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20' : 'bg-white/5 text-white/60 hover:bg-white/10'
-            }`}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 transition-all ${activeTab === 'users' ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20' : (darkMode ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-black/5 text-black/60 hover:bg-black/10')}`}
           >
             <Users size={16} /> Subscriber Management ({usersList.length})
           </button>
@@ -344,31 +407,31 @@ export default function AdminPanel() {
             className="grid grid-cols-1 lg:grid-cols-3 gap-8"
           >
             <div className="lg:col-span-2 space-y-8">
-              <div className="bg-white/5 rounded-[32px] p-6 sm:p-8 border border-white/10 shadow-2xl">
+              <div className={`${darkMode ? "bg-white/5" : "bg-black/5"} rounded-[32px] p-6 sm:p-8 border ${darkMode ? "border-white/10" : "border-black/10"} shadow-2xl`}>
                 <h2 className="text-lg font-bold mb-6 flex items-center gap-3">
                   <UploadCloud size={20} className="text-orange-400" /> Upload Creative Stream
                 </h2>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-[10px] uppercase font-bold text-white/60 mb-1">Title</label>
+                    <label className={`block text-[10px] uppercase font-bold ${darkMode ? "text-white" : "text-black"}/60 mb-1`}>Title</label>
                     <input 
                       required
                       type="text"
                       value={form.title}
                       onChange={e => setForm({ ...form, title: e.target.value })}
-                      className="w-full bg-black/40 border border-white/10 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-orange-500 transition shadow-inner"
+                      className={`w-full bg-black/40 border ${darkMode ? "border-white/10" : "border-black/10"} rounded-2xl px-4 py-3 text-xs ${darkMode ? "text-white" : "text-black"} focus:outline-none focus:border-orange-500 transition shadow-inner`}
                       placeholder="Title of animation, video, or music track"
                     />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] uppercase font-bold text-white/60 mb-1">Category</label>
+                      <label className={`block text-[10px] uppercase font-bold ${darkMode ? "text-white" : "text-black"}/60 mb-1`}>Category</label>
                       <select 
                         value={form.category}
                         onChange={e => setForm({ ...form, category: e.target.value })}
-                        className="w-full bg-black/40 border border-white/10 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-orange-500 transition shadow-inner"
+                        className={`w-full bg-black/40 border ${darkMode ? "border-white/10" : "border-black/10"} rounded-2xl px-4 py-3 text-xs ${darkMode ? "text-white" : "text-black"} focus:outline-none focus:border-orange-500 transition shadow-inner`}
                       >
                         <option value="Animation">Animation</option>
                         <option value="2D Video">2D Video</option>
@@ -379,7 +442,7 @@ export default function AdminPanel() {
 
                     <div>
                       <div className="flex justify-between items-center mb-1">
-                        <label className="block text-[10px] uppercase font-bold text-white/60">Thumbnail Image URL</label>
+                        <label className={`block text-[10px] uppercase font-bold ${darkMode ? "text-white" : "text-black"}/60`}>Thumbnail Image URL</label>
                         <button type="button" onClick={() => thumbnailInputRef.current?.click()} className="text-[10px] text-orange-400 uppercase font-bold hover:underline">
                           Upload File
                         </button>
@@ -389,7 +452,7 @@ export default function AdminPanel() {
                         type="url"
                         value={form.thumbnailUrl}
                         onChange={e => setForm({ ...form, thumbnailUrl: e.target.value })}
-                        className="w-full bg-black/40 border border-white/10 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-orange-500 transition shadow-inner"
+                        className={`w-full bg-black/40 border ${darkMode ? "border-white/10" : "border-black/10"} rounded-2xl px-4 py-3 text-xs ${darkMode ? "text-white" : "text-black"} focus:outline-none focus:border-orange-500 transition shadow-inner`}
                         placeholder="https://..."
                       />
                       <input type="file" accept="image/*" className="hidden" ref={thumbnailInputRef} onChange={e => handleFileUpload(e, 'thumbnail')} />
@@ -398,7 +461,7 @@ export default function AdminPanel() {
 
                   <div>
                     <div className="flex justify-between items-center mb-1">
-                      <label className="block text-[10px] uppercase font-bold text-white/60">Media Video Stream URL (MP4)</label>
+                      <label className={`block text-[10px] uppercase font-bold ${darkMode ? "text-white" : "text-black"}/60`}>Media Video Stream URL (MP4)</label>
                       <button type="button" onClick={() => videoInputRef.current?.click()} className="text-[10px] text-orange-400 uppercase font-bold hover:underline">
                         Upload Video
                       </button>
@@ -408,13 +471,13 @@ export default function AdminPanel() {
                       type="url"
                       value={form.videoUrl}
                       onChange={e => setForm({ ...form, videoUrl: e.target.value })}
-                      className="w-full bg-black/40 border border-white/10 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-orange-500 transition shadow-inner"
+                      className={`w-full bg-black/40 border ${darkMode ? "border-white/10" : "border-black/10"} rounded-2xl px-4 py-3 text-xs ${darkMode ? "text-white" : "text-black"} focus:outline-none focus:border-orange-500 transition shadow-inner`}
                       placeholder="https://..."
                     />
                     <input type="file" accept="video/mp4,video/webm" className="hidden" ref={videoInputRef} onChange={e => handleFileUpload(e, 'video')} />
                     {uploadProgress > 0 && uploadProgress < 100 && (
                       <div className="mt-2">
-                        <div className="flex justify-between text-[10px] font-mono text-white/50 mb-1">
+                        <div className={`flex justify-between text-[10px] font-mono ${darkMode ? "text-white" : "text-black"}/50 mb-1`}>
                           <span>Uploading Media File...</span>
                           <span>{Math.round(uploadProgress)}%</span>
                         </div>
@@ -427,7 +490,7 @@ export default function AdminPanel() {
 
                   <div>
                     <div className="flex justify-between items-center mb-1">
-                      <label className="block text-[10px] uppercase font-bold text-white/60">Description</label>
+                      <label className={`block text-[10px] uppercase font-bold ${darkMode ? "text-white" : "text-black"}/60`}>Description</label>
                       <button 
                         type="button"
                         onClick={handleGenerateDescription}
@@ -441,7 +504,7 @@ export default function AdminPanel() {
                       rows={3}
                       value={form.description}
                       onChange={e => setForm({ ...form, description: e.target.value })}
-                      className="w-full bg-black/40 border border-white/10 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-orange-500 transition shadow-inner"
+                      className={`w-full bg-black/40 border ${darkMode ? "border-white/10" : "border-black/10"} rounded-2xl px-4 py-3 text-xs ${darkMode ? "text-white" : "text-black"} focus:outline-none focus:border-orange-500 transition shadow-inner`}
                     />
                   </div>
 
@@ -456,16 +519,16 @@ export default function AdminPanel() {
               </div>
 
               {/* Published Media List */}
-              <div className="bg-white/5 rounded-[32px] p-6 sm:p-8 border border-white/10 shadow-2xl space-y-4">
-                <h3 className="font-bold text-sm uppercase text-white/70">Published Creative Catalog</h3>
+              <div className={`${darkMode ? "bg-white/5" : "bg-black/5"} rounded-[32px] p-6 sm:p-8 border ${darkMode ? "border-white/10" : "border-black/10"} shadow-2xl space-y-4`}>
+                <h3 className={`font-bold text-sm uppercase ${darkMode ? "text-white" : "text-black"}/70`}>Published Creative Catalog</h3>
                 <div className="space-y-3">
                   {videos.map(v => (
-                    <div key={v.id} className="p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between gap-4">
+                    <div key={v.id} className={`p-3 rounded-2xl ${darkMode ? "bg-white/5" : "bg-black/5"} border ${darkMode ? "border-white/10" : "border-black/10"} flex items-center justify-between gap-4`}>
                       <div className="flex items-center gap-3 overflow-hidden">
                         <img src={v.thumbnailUrl} alt={v.title} className="w-16 h-12 rounded-xl object-cover shrink-0" />
                         <div className="overflow-hidden">
                           <span className="text-[9px] font-mono text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded">{v.category}</span>
-                          <h4 className="text-xs font-bold truncate text-white mt-0.5">{v.title}</h4>
+                          <h4 className={`text-xs font-bold truncate ${darkMode ? "text-white" : "text-black"} mt-0.5`}>{v.title}</h4>
                         </div>
                       </div>
                       <button
@@ -483,27 +546,27 @@ export default function AdminPanel() {
 
             {/* Sidebar Preview & Analytics Export */}
             <div className="space-y-6">
-              <div className="bg-white/5 rounded-[32px] p-6 border border-white/10 shadow-xl space-y-4">
-                <h3 className="text-xs font-bold uppercase text-white/60">Live Preview</h3>
+              <div className={`${darkMode ? "bg-white/5" : "bg-black/5"} rounded-[32px] p-6 border ${darkMode ? "border-white/10" : "border-black/10"} shadow-xl space-y-4`}>
+                <h3 className={`text-xs font-bold uppercase ${darkMode ? "text-white" : "text-black"}/60`}>Live Preview</h3>
                 {form.thumbnailUrl ? (
-                  <div className="aspect-video bg-black rounded-2xl overflow-hidden border border-white/10 relative">
+                  <div className={`aspect-video bg-black rounded-2xl overflow-hidden border ${darkMode ? "border-white/10" : "border-black/10"} relative`}>
                     <img src={form.thumbnailUrl} alt="Preview" className="w-full h-full object-cover" />
                   </div>
                 ) : (
-                  <div className="aspect-video bg-black/40 rounded-2xl flex items-center justify-center text-white/20 border border-dashed border-white/10 text-xs font-mono">
+                  <div className={`aspect-video bg-black/40 rounded-2xl flex items-center justify-center ${darkMode ? "text-white" : "text-black"}/20 border border-dashed ${darkMode ? "border-white/10" : "border-black/10"} text-xs font-mono`}>
                     No Thumbnail
                   </div>
                 )}
                 <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-[10px] font-extrabold uppercase rounded">
                   {form.category}
                 </span>
-                <h4 className="text-sm font-bold text-white">{form.title || 'Untitled Stream'}</h4>
-                <p className="text-xs text-white/50 line-clamp-3">{form.description || 'Description preview...'}</p>
+                <h4 className={`text-sm font-bold ${darkMode ? "text-white" : "text-black"}`}>{form.title || 'Untitled Stream'}</h4>
+                <p className={`text-xs ${darkMode ? "text-white" : "text-black"}/50 line-clamp-3`}>{form.description || 'Description preview...'}</p>
               </div>
 
-              <div className="bg-white/5 rounded-[32px] p-6 border border-white/10 shadow-xl space-y-4">
+              <div className={`${darkMode ? "bg-white/5" : "bg-black/5"} rounded-[32px] p-6 border ${darkMode ? "border-white/10" : "border-black/10"} shadow-xl space-y-4`}>
                 <div className="flex justify-between items-center">
-                  <h3 className="text-xs font-bold uppercase text-white/60">Member Engagement</h3>
+                  <h3 className={`text-xs font-bold uppercase ${darkMode ? "text-white" : "text-black"}/60`}>Member Engagement</h3>
                   <span className="text-[10px] text-emerald-400 font-mono">Optimal</span>
                 </div>
                 <div className="h-36 w-full">
@@ -528,16 +591,80 @@ export default function AdminPanel() {
         )}
 
         {/* Tab 2: Subscriber Management */}
+        
+        {activeTab === 'settings' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className={`text-xl font-bold tracking-tight ${darkMode ? "text-white" : "text-black"} flex items-center gap-2`}>
+                <Settings className="text-orange-500" size={20} /> Content Management
+              </h2>
+            </div>
+            
+            <form onSubmit={handleSettingsSubmit} className={`${darkMode ? "bg-white/5" : "bg-black/5"} border ${darkMode ? "border-white/10" : "border-black/10"} rounded-[32px] p-6 sm:p-8 space-y-6`}>
+              <div className="space-y-2">
+                <label className={`text-[10px] uppercase font-bold tracking-wider ${darkMode ? "text-white" : "text-black"}/50`}>Hero Title</label>
+                <input
+                  type="text"
+                  value={settingsForm.heroTitle}
+                  onChange={e => setSettingsForm({...settingsForm, heroTitle: e.target.value})}
+                  className={`w-full ${darkMode ? "bg-black/50" : "bg-white"} border ${darkMode ? "border-white/10" : "border-black/10"} rounded-2xl px-4 py-3 text-sm ${darkMode ? "text-white" : "text-black"} focus:outline-none focus:border-orange-500/50`}
+                  placeholder="Premium Stream Experience"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className={`text-[10px] uppercase font-bold tracking-wider ${darkMode ? "text-white" : "text-black"}/50`}>Hero Subtitle</label>
+                <textarea
+                  value={settingsForm.heroSubtitle}
+                  onChange={e => setSettingsForm({...settingsForm, heroSubtitle: e.target.value})}
+                  className={`w-full ${darkMode ? "bg-black/50" : "bg-white"} border ${darkMode ? "border-white/10" : "border-black/10"} rounded-2xl px-4 py-3 text-sm ${darkMode ? "text-white" : "text-black"} focus:outline-none focus:border-orange-500/50 h-24 resize-none`}
+                  placeholder="Handpicked HD creative masterwork..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className={`text-[10px] uppercase font-bold tracking-wider ${darkMode ? "text-white" : "text-black"}/50`}>Brand Name</label>
+                  <input
+                    type="text"
+                    value={settingsForm.brandName}
+                    onChange={e => setSettingsForm({...settingsForm, brandName: e.target.value})}
+                    className={`w-full ${darkMode ? "bg-black/50" : "bg-white"} border ${darkMode ? "border-white/10" : "border-black/10"} rounded-2xl px-4 py-3 text-sm ${darkMode ? "text-white" : "text-black"} focus:outline-none focus:border-orange-500/50`}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className={`text-[10px] uppercase font-bold tracking-wider ${darkMode ? "text-white" : "text-black"}/50`}>Brand Tag</label>
+                  <input
+                    type="text"
+                    value={settingsForm.brandTag}
+                    onChange={e => setSettingsForm({...settingsForm, brandTag: e.target.value})}
+                    className={`w-full ${darkMode ? "bg-black/50" : "bg-white"} border ${darkMode ? "border-white/10" : "border-black/10"} rounded-2xl px-4 py-3 text-sm ${darkMode ? "text-white" : "text-black"} focus:outline-none focus:border-orange-500/50`}
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 rounded-2xl bg-orange-500 hover:bg-orange-400 text-black font-extrabold text-sm transition-colors flex items-center justify-center gap-2"
+              >
+                {loading ? <RefreshCw size={18} className="animate-spin" /> : <Settings size={18} />}
+                {loading ? 'Saving...' : 'Save Changes'}
+              </button>
+            </form>
+          </motion.div>
+        )}
+
         {activeTab === 'users' && (
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white/5 rounded-[32px] p-6 sm:p-8 border border-white/10 shadow-2xl space-y-6"
+            className={`${darkMode ? "bg-white/5" : "bg-black/5"} rounded-[32px] p-6 sm:p-8 border ${darkMode ? "border-white/10" : "border-black/10"} } shadow-2xl space-y-6`}
           >
-            <div className="flex justify-between items-center pb-4 border-b border-white/10">
+            <div className={`flex justify-between items-center pb-4 border-b ${darkMode ? "border-white/10" : "border-black/10"} }`}>
               <div>
                 <h2 className="text-lg font-bold">Registered Members & Subscribers</h2>
-                <p className="text-xs text-white/50">Manage roles, bans, and automated subscriptions</p>
+                <p className={`text-xs ${darkMode ? "text-white" : "text-black"}/50`}>Manage roles, bans, and automated subscriptions</p>
               </div>
               <span className="text-xs font-mono text-orange-400 bg-orange-500/10 px-3 py-1 rounded-full">
                 {usersList.length} Accounts Active
@@ -546,12 +673,12 @@ export default function AdminPanel() {
 
             <div className="space-y-3">
               {usersList.map((u) => (
-                <div key={u.uid} className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-wrap items-center justify-between gap-4">
+                <div key={u.uid} className={`p-4 rounded-2xl ${darkMode ? "bg-white/5" : "bg-black/5"} border ${darkMode ? "border-white/10" : "border-black/10"} flex flex-wrap items-center justify-between gap-4`}>
                   <div className="flex items-center gap-3">
                     <img src={u.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'} alt="user" className="w-10 h-10 rounded-full object-cover border border-white/20" />
                     <div>
                       <div className="flex items-center gap-2">
-                        <h4 className="text-xs font-bold text-white">{u.displayName || 'Anonymous Member'}</h4>
+                        <h4 className={`text-xs font-bold ${darkMode ? "text-white" : "text-black"}`}>{u.displayName || 'Anonymous Member'}</h4>
                         {u.role === 'admin' && (
                           <span className="bg-amber-500/20 text-amber-400 text-[9px] font-mono px-1.5 py-0.2 rounded border border-amber-500/30">
                             ADMIN
@@ -563,15 +690,14 @@ export default function AdminPanel() {
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-white/50">{u.email || u.uid}</p>
+                      <p className={`text-[10px] ${darkMode ? "text-white" : "text-black"}/50`}>{u.email || u.uid}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleToggleUserRole(u.uid, u.role)}
-                      className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[10px] font-bold text-white transition-all flex items-center gap-1"
-                    >
+                      className={`px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[10px] font-bold ${darkMode ? "text-white" : "text-black"} transition-all flex items-center gap-1"}`}>
                       <Crown size={12} className="text-amber-400" />
                       {u.role === 'admin' ? 'Revoke Admin' : 'Make Admin'}
                     </button>

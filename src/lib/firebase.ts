@@ -2,20 +2,11 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-
-const firebaseConfig = {
-  projectId: "smiling-impulse-k5fd2",
-  appId: "1:713670526594:web:49751c6cb6e6be89b6d69b",
-  apiKey: "AIzaSyBna2YX8O29vrS4pWAu-CMOvAtNTlu0Dzk",
-  authDomain: "smiling-impulse-k5fd2.firebaseapp.com",
-  storageBucket: "smiling-impulse-k5fd2.firebasestorage.app",
-  messagingSenderId: "713670526594",
-  measurementId: ""
-};
+import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 // Enable offline persistence
 enableIndexedDbPersistence(db).catch((err) => {

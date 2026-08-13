@@ -14,10 +14,10 @@ import { getTranslation } from '../lib/i18n';
 export default function Dashboard() {
   const { user } = useAuthStore();
   const { 
-    language, highContrast, textSize, searchQuery, 
+    language, darkMode, searchQuery, 
     selectedCategory, setSelectedCategory,
     offlineVault, addToVault, removeFromVault,
-    setSubscriptionModalOpen
+    setSubscriptionModalOpen, appSettings
   } = useAppStore();
 
   const [videos, setVideos] = useState<Video[]>([]);
@@ -90,11 +90,11 @@ export default function Dashboard() {
   const isVaultTab = selectedCategory === 'Vault' || activeTab === 'vault';
 
   // Text scaling font sizes
-  const fontClass = textSize === 'large' ? 'text-lg' : textSize === 'xlarge' ? 'text-xl' : 'text-base';
+  
 
   return (
     <div className={`min-h-screen font-sans select-none overflow-x-hidden ${
-      highContrast ? 'bg-black text-yellow-300' : 'bg-[#050508] text-white'
+      darkMode ? 'bg-[#0a0a0f] ${darkMode ? "text-white" : "text-black"}' : 'bg-gray-50 text-gray-900'
     }`}>
       <Navbar />
 
@@ -118,11 +118,11 @@ export default function Dashboard() {
               animate={{ scale: 1 }}
               transition={{ duration: 1.5, ease: "easeOut" }}
               src={featured.thumbnailUrl} 
-              alt={featured.title} 
+              alt={appSettings?.heroTitle || featured.title} 
               className="w-full h-full object-cover" 
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#050508] via-[#050508]/60 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#050508] via-[#050508]/70 to-transparent" />
+            <div className={`absolute inset-0 bg-gradient-to-t ${darkMode ? "from-[#0a0a0f]" : "from-gray-50"} via-[#050508]/60 to-transparent`} />
+            <div className={`absolute inset-0 bg-gradient-to-r ${darkMode ? "from-[#0a0a0f]" : "from-gray-50"} via-[#050508]/70 to-transparent`} />
           </div>
 
           <div className="absolute bottom-12 left-6 sm:left-12 max-w-3xl z-20 space-y-4">
@@ -137,7 +137,7 @@ export default function Dashboard() {
               <span className="px-3 py-1 rounded-full bg-orange-500/20 border border-orange-500/40 text-orange-400 font-extrabold text-[11px] uppercase tracking-wider">
                 {featured.category}
               </span>
-              <span className="px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white font-mono text-[11px] flex items-center gap-1">
+              <span className={`px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 ${darkMode ? "text-white" : "text-black"} font-mono text-[11px] flex items-center gap-1`}>
                 <Sparkles size={12} className="text-amber-400" /> 4K Ultra HD
               </span>
               <span className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-mono text-[11px] flex items-center gap-1">
@@ -150,7 +150,7 @@ export default function Dashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.5 }}
-              className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-tight"
+              className={`text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight ${darkMode ? "text-white" : "text-black"} leading-tight`}
             >
               {featured.title}
             </motion.h1>
@@ -164,7 +164,7 @@ export default function Dashboard() {
                 className="p-3 rounded-2xl bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-transparent border border-orange-500/30 text-xs text-orange-200 flex items-start gap-2 max-w-xl"
               >
                 <Sparkles size={16} className="text-amber-400 shrink-0 mt-0.5" />
-                <p className="italic">"{aiRecommendation}"</p>
+                <p className="italic">"{appSettings?.heroAiRecommendation || aiRecommendation}"</p>
               </motion.div>
             )}
 
@@ -173,9 +173,9 @@ export default function Dashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5, duration: 0.5 }}
-              className="text-white/70 text-xs sm:text-sm line-clamp-2 max-w-2xl leading-relaxed"
+              className={`${darkMode ? "text-white" : "text-black"}/70 text-xs sm:text-sm line-clamp-2 max-w-2xl leading-relaxed`}
             >
-              {featured.description}
+              {appSettings?.heroSubtitle || featured.description}
             </motion.p>
 
             {/* Hero Actions */}
@@ -194,7 +194,7 @@ export default function Dashboard() {
 
               <button
                 onClick={() => handleDownloadOffline(featured)}
-                className="px-5 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-all"
+                className={`px-5 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 ${darkMode ? "text-white" : "text-black"} font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-all`}
               >
                 <Download size={16} className="text-green-400" /> {t('downloadOffline')}
               </button>
@@ -218,7 +218,7 @@ export default function Dashboard() {
                 className={`px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-2 ${
                   isCatActive
                     ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20 font-black'
-                    : 'bg-white/5 hover:bg-white/10 text-white/70 border border-white/10'
+                    : '${darkMode ? "bg-white/5 hover:bg-white/10 ${darkMode ? "text-white" : "text-black"}/70 border-white/10" : "bg-black/5 hover:bg-black/10 text-black/70 border-black/10"}'
                 }`}
               >
                 {cat === 'All' && <Flame size={14} />}
@@ -246,27 +246,27 @@ export default function Dashboard() {
                 <h2 className="text-2xl font-extrabold flex items-center gap-2">
                   <Download className="text-green-400" size={24} /> {t('offlineVaultTitle')}
                 </h2>
-                <p className="text-xs text-white/60">AES-256 Encrypted Offline Playback Vault</p>
+                <p className={`text-xs ${darkMode ? "text-white/60" : "text-black/60"}`}>AES-256 Encrypted Offline Playback Vault</p>
               </div>
             </div>
 
             {offlineVault.length === 0 ? (
-              <div className="py-20 text-center bg-white/5 border border-white/10 rounded-[32px] space-y-3">
-                <Lock size={40} className="text-white/20 mx-auto" />
-                <h3 className="text-base font-bold text-white/80">Offline Vault Empty</h3>
-                <p className="text-xs text-white/50 max-w-md mx-auto">
+              <div className={`py-20 text-center ${darkMode ? "bg-white/5 border-white/10" : "bg-black/5 border-black/10"} rounded-[32px] space-y-3`}>
+                <Lock size={40} className={`${darkMode ? "text-white" : "text-black"}/20 mx-auto`} />
+                <h3 className={`text-base font-bold ${darkMode ? "text-white/80" : "text-black/80"}`}>Offline Vault Empty</h3>
+                <p className={`text-xs ${darkMode ? "text-white/50" : "text-black/50"} max-w-md mx-auto`}>
                   Download animations, shorts, or music tracks while connected to stream them anytime without internet connection.
                 </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {offlineVault.map((item) => (
-                  <div key={item.id} className="bg-white/5 border border-white/10 rounded-3xl p-4 flex gap-4 items-center">
+                  <div key={item.id} className={`${darkMode ? "bg-white/5 border-white/10" : "bg-black/5 border-black/10"} rounded-3xl p-4 flex gap-4 items-center`}>
                     <img src={item.thumbnailUrl} alt={item.title} className="w-24 h-20 rounded-2xl object-cover shrink-0" />
                     <div className="flex-1 overflow-hidden">
                       <span className="text-[10px] font-mono text-green-400 bg-green-500/10 px-2 py-0.5 rounded">{item.category}</span>
-                      <h4 className="text-xs font-bold text-white truncate mt-1">{item.title}</h4>
-                      <p className="text-[10px] text-white/40">{item.fileSize} • Downloaded {item.downloadedAt}</p>
+                      <h4 className={`text-xs font-bold ${darkMode ? "text-white" : "text-black"} truncate mt-1`}>{item.title}</h4>
+                      <p className={`text-[10px] ${darkMode ? "text-white/40" : "text-black/40"}`}>{item.fileSize} • Downloaded {item.downloadedAt}</p>
                       <div className="flex gap-2 mt-2">
                         <Link 
                           to={`/play/vault_${item.id}`}
@@ -291,18 +291,18 @@ export default function Dashboard() {
           /* Main Video Grid */
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              <h2 className={`text-xl font-bold tracking-tight ${darkMode ? "text-white" : "text-black"} flex items-center gap-2`}>
                 <Flame className="text-orange-500" size={20} />
                 <span>{selectedCategory} Content</span>
               </h2>
-              <span className="text-xs font-mono text-white/50">{filteredVideos.length} Streams Available</span>
+              <span className={`text-xs font-mono ${darkMode ? "text-white/50" : "text-black/50"}`}>{filteredVideos.length} Streams Available</span>
             </div>
 
             {filteredVideos.length === 0 ? (
-              <div className="py-20 text-center bg-white/5 border border-white/10 rounded-[32px] space-y-3">
-                <Search size={40} className="text-white/20 mx-auto" />
-                <h3 className="text-base font-bold text-white/80">No Media Found</h3>
-                <p className="text-xs text-white/50">Try adjusting your search query or selected category filter.</p>
+              <div className={`py-20 text-center ${darkMode ? "bg-white/5 border-white/10" : "bg-black/5 border-black/10"} rounded-[32px] space-y-3`}>
+                <Search size={40} className={`${darkMode ? "text-white" : "text-black"}/20 mx-auto`} />
+                <h3 className={`text-base font-bold ${darkMode ? "text-white/80" : "text-black/80"}`}>No Media Found</h3>
+                <p className={`text-xs ${darkMode ? "text-white/50" : "text-black/50"}`}>Try adjusting your search query or selected category filter.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -312,7 +312,7 @@ export default function Dashboard() {
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.05 }}
-                    className="group bg-white/5 border border-white/10 rounded-[28px] overflow-hidden hover:border-orange-500/50 hover:bg-white/10 transition-all shadow-xl"
+                    className={`group ${darkMode ? "bg-white/5 border-white/10" : "bg-black/5 border-black/10"} rounded-[28px] overflow-hidden hover:border-orange-500/50 hover:bg-white/10 transition-all shadow-xl`}
                   >
                     <div className="relative aspect-video overflow-hidden">
                       <img 
@@ -329,7 +329,7 @@ export default function Dashboard() {
                         </Link>
                         <button
                           onClick={() => handleDownloadOffline(video)}
-                          className="w-10 h-10 rounded-2xl bg-white/20 text-white flex items-center justify-center hover:bg-white/30 transition-all"
+                          className={`w-10 h-10 rounded-2xl bg-white/20 ${darkMode ? "text-white" : "text-black"} flex items-center justify-center hover:bg-white/30 transition-all`}
                           title={t('downloadOffline')}
                         >
                           <Download size={18} />
@@ -342,14 +342,14 @@ export default function Dashboard() {
                     </div>
 
                     <div className="p-4 space-y-2">
-                      <div className="flex justify-between items-center text-[10px] text-white/50 font-mono">
+                      <div className={`flex justify-between items-center text-[10px] ${darkMode ? "text-white/50" : "text-black/50"} font-mono`}>
                         <span>{video.views} Streams</span>
                         <span className="text-emerald-400">4K Ad-Free</span>
                       </div>
-                      <h3 className="font-bold text-sm text-white line-clamp-1 group-hover:text-orange-400 transition-colors">
+                      <h3 className={`font-bold text-sm ${darkMode ? "text-white" : "text-black"} line-clamp-1 group-hover:text-orange-400 transition-colors`}>
                         {video.title}
                       </h3>
-                      <p className="text-xs text-white/60 line-clamp-2 leading-relaxed">
+                      <p className={`text-xs ${darkMode ? "text-white/60" : "text-black/60"} line-clamp-2 leading-relaxed`}>
                         {video.description}
                       </p>
                     </div>
