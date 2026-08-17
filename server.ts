@@ -4,7 +4,7 @@ import fs from "fs";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
-import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
+import { requireAuth, requireAdmin, AuthRequest } from './src/middleware/auth.ts';
 import { getOrCreateUser, getAllUsers, updateUserRole, updateUserSubscription, updateUserProfile } from './src/db/users.ts';
 import { db, createPool } from './src/db/index.ts';
 import { videos } from './src/db/schema.ts';
@@ -143,16 +143,37 @@ async function startServer() {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
 
+  // Security Headers Middleware
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
+
+  // Allowed Safe Media Extensions & MIME Types
+  const ALLOWED_MIME_TYPES = new Set([
+    'video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska',
+    'image/jpeg', 'image/png', 'image/webp', 'image/avif',
+    'text/vtt'
+  ]);
+  const ALLOWED_EXTS = new Set([
+    '.mp4', '.webm', '.mov', '.mkv',
+    '.jpg', '.jpeg', '.png', '.webp', '.avif',
+    '.vtt'
+  ]);
+
   // Multer Storage Configuration for Fast Chunked Streaming
   const storageConfig = multer.diskStorage({
     destination: (_req, _file, cb) => {
       cb(null, uploadsDir);
     },
     filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase() || (file.mimetype.startsWith('video/') ? '.mp4' : '.jpg');
-      const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+      const rawExt = path.extname(file.originalname).toLowerCase();
+      const ext = ALLOWED_EXTS.has(rawExt) ? rawExt : (file.mimetype.startsWith('video/') ? '.mp4' : '.jpg');
+      const base = path.basename(file.originalname, rawExt).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
       const uniqueSuffix = `${Date.now()}_${Math.round(Math.random() * 1e9)}`;
-      cb(null, `${base}_${uniqueSuffix}${ext}`);
+      cb(null, `${base || 'media'}_${uniqueSuffix}${ext}`);
     }
   });
 
@@ -160,6 +181,14 @@ async function startServer() {
     storage: storageConfig,
     limits: {
       fileSize: 1024 * 1024 * 1024, // 1GB max for high quality videos
+    },
+    fileFilter: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (ALLOWED_MIME_TYPES.has(file.mimetype) || ALLOWED_EXTS.has(ext)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Disallowed file type. Only standard video, audio, and image assets are permitted."));
+      }
     }
   });
 
@@ -174,8 +203,8 @@ async function startServer() {
     }
   }));
 
-  // Fast direct multipart file upload endpoint
-  app.post("/api/upload", upload.single('file'), (req, res) => {
+  // Fast direct multipart file upload endpoint (Authenticated)
+  app.post("/api/upload", requireAuth, upload.single('file'), (req: AuthRequest, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file was uploaded" });
@@ -272,12 +301,8 @@ async function startServer() {
     }
   });
 
-  app.patch("/api/settings", requireAuth, async (req, res) => {
+  app.patch("/api/settings", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
-      // @ts-ignore
-      if (req.user?.role !== 'admin') {
-        return res.status(403).json({ error: 'Admin only' });
-      }
       appSettingsState = { ...appSettingsState, ...req.body };
       return res.json(appSettingsState);
     } catch (e) {
@@ -317,8 +342,8 @@ async function startServer() {
     }
   });
 
-  // Create new video
-  app.post("/api/videos", requireAuth, async (req: AuthRequest, res) => {
+  // Create new video (Admin Only)
+  app.post("/api/videos", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const { 
         title, description, videoUrl, thumbnailUrl, category, 
@@ -355,8 +380,8 @@ async function startServer() {
     }
   });
 
-  // Update single video
-  app.patch("/api/videos/:id", requireAuth, async (req: AuthRequest, res) => {
+  // Update single video (Admin Only)
+  app.patch("/api/videos/:id", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const videoId = parseInt(req.params.id);
       if (isNaN(videoId)) return res.status(400).json({ error: "Invalid video ID" });
@@ -407,8 +432,8 @@ async function startServer() {
     }
   });
 
-  // Bulk update videos (Metadata, Tags, Visibility, Category, Studio)
-  app.post("/api/videos/bulk", requireAuth, async (req: AuthRequest, res) => {
+  // Bulk update videos (Admin Only)
+  app.post("/api/videos/bulk", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const { videoIds, updates } = req.body;
       if (!Array.isArray(videoIds) || videoIds.length === 0) {
@@ -486,8 +511,8 @@ async function startServer() {
     }
   });
 
-  // Bulk delete videos
-  app.delete("/api/videos/bulk", requireAuth, async (req: AuthRequest, res) => {
+  // Bulk delete videos (Admin Only)
+  app.delete("/api/videos/bulk", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const { videoIds } = req.body;
       if (!Array.isArray(videoIds) || videoIds.length === 0) {
@@ -506,8 +531,8 @@ async function startServer() {
     }
   });
 
-  // Delete single video
-  app.delete("/api/videos/:id", requireAuth, async (req: AuthRequest, res) => {
+  // Delete single video (Admin Only)
+  app.delete("/api/videos/:id", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const videoId = parseInt(req.params.id);
       await db.delete(videos).where(eq(videos.id, videoId));
@@ -518,8 +543,8 @@ async function startServer() {
     }
   });
 
-  // Get All Users for Admin Studio
-  app.get("/api/users", requireAuth, async (req: AuthRequest, res) => {
+  // Get All Users for Admin Studio (Admin Only)
+  app.get("/api/users", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const allUsers = await getAllUsers();
       res.json(allUsers);
@@ -529,8 +554,8 @@ async function startServer() {
     }
   });
 
-  // Toggle Role for User
-  app.patch("/api/users/:uid/role", requireAuth, async (req: AuthRequest, res) => {
+  // Toggle Role for User (Admin Only)
+  app.patch("/api/users/:uid/role", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const { role } = req.body;
       const updated = await updateUserRole(req.params.uid, role);
@@ -541,8 +566,8 @@ async function startServer() {
     }
   });
 
-  // Toggle Subscription Status (active/banned/inactive)
-  app.patch("/api/users/:uid/status", requireAuth, async (req: AuthRequest, res) => {
+  // Toggle Subscription Status (active/banned/inactive) (Admin Only)
+  app.patch("/api/users/:uid/status", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const { subscriptionStatus } = req.body;
       const updated = await updateUserSubscription(req.params.uid, subscriptionStatus);
@@ -553,8 +578,8 @@ async function startServer() {
     }
   });
 
-  // AI Route for Bulk Smart Tags Generation
-  app.post("/api/ai/bulk-tags", async (req, res) => {
+  // AI Route for Bulk Smart Tags Generation (Admin Only)
+  app.post("/api/ai/bulk-tags", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const { items } = req.body;
       const apiKey = process.env.GEMINI_API_KEY;

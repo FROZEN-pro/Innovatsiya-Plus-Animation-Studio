@@ -1,9 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import { adminAuth } from '../lib/firebase-admin.ts';
 import { DecodedIdToken } from 'firebase-admin/auth';
+import { db } from '../db/index.ts';
+import { users } from '../db/schema.ts';
+import { eq } from 'drizzle-orm';
 
 export interface AuthRequest extends Request {
-  user?: DecodedIdToken;
+  user?: DecodedIdToken & {
+    dbRole?: string;
+  };
 }
 
 export const requireAuth = async (
@@ -20,26 +25,35 @@ export const requireAuth = async (
   try {
     const decodedToken = await adminAuth.verifyIdToken(token);
     req.user = decodedToken;
-    next();
+    return next();
   } catch (error) {
-    console.warn('Firebase ID token verify fallback:', error);
-    try {
-      const parts = token.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
-        if (payload && (payload.user_id || payload.sub || payload.uid)) {
-          req.user = {
-            uid: payload.user_id || payload.sub || payload.uid,
-            email: payload.email,
-            name: payload.name,
-            ...payload
-          } as any;
-          return next();
-        }
-      }
-    } catch (e) {
-      console.error('Failed to parse JWT payload fallback:', e);
-    }
-    return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+    console.error('Firebase token verification failed:', error);
+    return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
   }
+};
+
+export const requireAdmin = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Unauthorized: Authentication required' });
+  }
+
+  const adminEmail = 'sherzodmamatov10@gmail.com';
+  if (req.user.email === adminEmail) {
+    return next();
+  }
+
+  try {
+    const dbUser = await db.select().from(users).where(eq(users.uid, req.user.uid)).limit(1);
+    if (dbUser.length > 0 && dbUser[0].role === 'admin') {
+      return next();
+    }
+  } catch (e) {
+    console.error('Admin check DB query error:', e);
+  }
+
+  return res.status(403).json({ error: 'Forbidden: Admin access required' });
 };
