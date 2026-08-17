@@ -1,5 +1,7 @@
-@import "tailwindcss";
+const fs = require('fs');
+let css = fs.readFileSync('src/index.css', 'utf8');
 
+css += `
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
@@ -40,3 +42,6 @@ html, body {
   color: var(--foreground);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
+`;
+
+fs.writeFileSync('src/index.css', css);

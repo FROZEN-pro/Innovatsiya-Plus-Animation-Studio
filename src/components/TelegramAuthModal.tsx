@@ -4,7 +4,7 @@ import { X, Send, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export default function TelegramAuthModal() {
-  const { isTelegramModalOpen, setTelegramModalOpen } = useAppStore();
+  const { isTelegramModalOpen, setTelegramModalOpen, darkMode } = useAppStore();
   const { setUser } = useAuthStore();
   
   const [telegramHandle, setTelegramHandle] = useState('');
@@ -52,7 +52,9 @@ export default function TelegramAuthModal() {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative w-full max-w-md bg-[#0d0d12] border border-sky-500/20 rounded-[32px] p-6 sm:p-8 shadow-2xl text-white overflow-hidden"
+        className={`relative w-full max-w-md ${
+          darkMode ? 'bg-[#0d0d12] border-sky-500/20 text-white' : 'bg-white border-zinc-200 text-zinc-900'
+        } border rounded-[32px] p-6 sm:p-8 shadow-2xl overflow-hidden transition-colors duration-200`}
       >
         
         {/* Glow Accent */}
@@ -60,7 +62,9 @@ export default function TelegramAuthModal() {
 
         <button 
           onClick={() => setTelegramModalOpen(false)}
-          className="absolute top-6 right-6 p-2 rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all"
+          className={`absolute top-6 right-6 p-2 rounded-full ${
+            darkMode ? 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600 hover:text-zinc-900'
+          } transition-all`}
         >
           <X size={18} />
         </button>
@@ -70,21 +74,21 @@ export default function TelegramAuthModal() {
             <Send className="text-white" size={20} />
           </div>
           <div>
-            <h2 className="text-lg font-bold">Telegram Authentication</h2>
-            <p className="text-xs text-white/60">Sign in using Telegram ID or Bot widget</p>
+            <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Telegram Authentication</h2>
+            <p className={`text-xs ${darkMode ? 'text-white/60' : 'text-zinc-500'}`}>Sign in using Telegram ID or Bot widget</p>
           </div>
         </div>
 
         {success ? (
           <div className="py-8 text-center space-y-3">
-            <CheckCircle2 size={48} className="text-emerald-400 mx-auto animate-bounce" />
-            <h3 className="text-lg font-bold text-white">Telegram Account Linked!</h3>
-            <p className="text-xs text-white/60">Welcome to Innovation Plus VIP Media Platform.</p>
+            <CheckCircle2 size={48} className="text-emerald-500 mx-auto animate-bounce" />
+            <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Telegram Account Linked!</h3>
+            <p className={`text-xs ${darkMode ? 'text-white/60' : 'text-zinc-500'}`}>Welcome to Innovation Plus VIP Media Platform.</p>
           </div>
         ) : (
           <form onSubmit={handleTelegramSignIn} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
+              <label className={`block text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-zinc-600'} mb-2`}>
                 Telegram Username / Handle
               </label>
               <div className="relative">
@@ -94,13 +98,15 @@ export default function TelegramAuthModal() {
                   value={telegramHandle}
                   onChange={(e) => setTelegramHandle(e.target.value)}
                   placeholder="@your_telegram_username"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-xs text-white placeholder-white/30 focus:outline-none focus:border-sky-500 transition-all"
+                  className={`w-full ${
+                    darkMode ? 'bg-white/5 border-white/10 text-white placeholder-white/30' : 'bg-zinc-50 border-zinc-200 text-zinc-900 placeholder-zinc-400'
+                  } border rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-sky-500 transition-all`}
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-2">
+              <label className={`block text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-zinc-600'} mb-2`}>
                 Phone Number (Optional)
               </label>
               <input
@@ -108,7 +114,9 @@ export default function TelegramAuthModal() {
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 placeholder="+1 234 567 8900"
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-xs text-white placeholder-white/30 focus:outline-none focus:border-sky-500 transition-all"
+                className={`w-full ${
+                  darkMode ? 'bg-white/5 border-white/10 text-white placeholder-white/30' : 'bg-zinc-50 border-zinc-200 text-zinc-900 placeholder-zinc-400'
+                } border rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-sky-500 transition-all`}
               />
             </div>
 
@@ -122,8 +130,8 @@ export default function TelegramAuthModal() {
               </button>
             </div>
 
-            <div className="flex items-center justify-center gap-1.5 text-[10px] text-white/40 pt-2">
-              <ShieldCheck size={12} className="text-sky-400" />
+            <div className={`flex items-center justify-center gap-1.5 text-[10px] ${darkMode ? 'text-white/40' : 'text-zinc-500'} pt-2`}>
+              <ShieldCheck size={12} className="text-sky-500" />
               <span>Verified via Telegram Auth Protocol</span>
             </div>
           </form>

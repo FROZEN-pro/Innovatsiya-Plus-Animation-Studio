@@ -74,8 +74,28 @@
         "lastLogin": {
           "type": "number"
         },
+        "lastLoginAt": {
+          "type": "number"
+        },
+        "loginCount": {
+          "type": "number"
+        },
+        "totalWatchDurationSeconds": {
+          "type": "number"
+        },
         "totalWatchTimeMinutes": {
           "type": "number"
+        },
+        "lastActiveAt": {
+          "type": "number"
+        },
+        "recentLoginDevice": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "recentLoginMethod": {
+          "type": "string",
+          "maxLength": 50
         }
       },
       "required": [
@@ -169,17 +189,256 @@
         "progressSeconds": {
           "type": "number"
         },
+        "watchDurationSeconds": {
+          "type": "number"
+        },
         "completed": {
           "type": "boolean"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "thumbnailUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 50
+        },
+        "playCount": {
+          "type": "number"
         }
       },
       "required": [
         "videoId",
         "lastWatchedAt"
       ]
+    },
+    "LoginLog": {
+      "title": "LoginLog",
+      "description": "User authentication and login audit record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "method": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "device": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 100
+        },
+        "userAgent": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 300
+        },
+        "ip": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 50
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "timestamp",
+        "method"
+      ]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "User comment on a video",
+      "type": "object",
+      "properties": {
+        "videoId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "userDisplayName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "userPhotoURL": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "videoId",
+        "userId",
+        "text",
+        "createdAt"
+      ]
+    },
+    "UserLike": {
+      "title": "UserLike",
+      "description": "User like for a video",
+      "type": "object",
+      "properties": {
+        "videoId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "videoId",
+        "createdAt"
+      ]
+    },
+    "VideoStats": {
+      "title": "VideoStats",
+      "description": "Video statistics like total likes",
+      "type": "object",
+      "properties": {
+        "likes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "likes"
+      ]
+    },
+    "Favorite": {
+      "title": "Favorite",
+      "description": "User bookmarked or starred favorite video reference for quick access",
+      "type": "object",
+      "properties": {
+        "videoId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "thumbnailUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 50
+        },
+        "createdAt": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "videoId",
+        "createdAt"
+      ]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Real-time system or video release notification",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "new_video",
+            "announcement",
+            "system"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "videoId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "videoTitle": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "thumbnailUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "title",
+        "message",
+        "createdAt"
+      ]
     }
   },
   "firestore": {
+    "notifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/Notification"
+      },
+      "description": "Real-time video release and broadcast notifications"
+    },
     "users/{userId}": {
       "schema": {
         "$ref": "#/entities/User"
@@ -197,6 +456,36 @@
         "$ref": "#/entities/WatchHistory"
       },
       "description": "Watch history for a user"
+    },
+    "users/{userId}/loginLogs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/LoginLog"
+      },
+      "description": "User login audit and timestamp trail"
+    },
+    "comments/{commentId}": {
+      "schema": {
+        "$ref": "#/entities/Comment"
+      },
+      "description": "Video comments"
+    },
+    "users/{userId}/likes/{videoId}": {
+      "schema": {
+        "$ref": "#/entities/UserLike"
+      },
+      "description": "Likes from a specific user"
+    },
+    "users/{userId}/favorites/{videoId}": {
+      "schema": {
+        "$ref": "#/entities/Favorite"
+      },
+      "description": "Bookmarked favorite videos for quick access"
+    },
+    "videoStats/{videoId}": {
+      "schema": {
+        "$ref": "#/entities/VideoStats"
+      },
+      "description": "Public video statistics"
     }
   }
 }

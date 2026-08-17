@@ -4,7 +4,7 @@ import { X, Smartphone, Download, CheckCircle2, ShieldCheck, Share, Globe } from
 import { motion } from 'motion/react';
 
 export default function PwaInstallModal() {
-  const { isPwaModalOpen, setPwaModalOpen } = useAppStore();
+  const { isPwaModalOpen, setPwaModalOpen, darkMode } = useAppStore();
   const [installed, setInstalled] = useState(false);
 
   if (!isPwaModalOpen) return null;
@@ -23,12 +23,16 @@ export default function PwaInstallModal() {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="relative w-full max-w-md bg-[#0d0d12] border border-orange-500/30 rounded-[32px] p-6 text-white shadow-2xl overflow-hidden"
+        className={`relative w-full max-w-md ${
+          darkMode ? 'bg-[#0d0d12] border-orange-500/30 text-white' : 'bg-white border-zinc-200 text-zinc-900'
+        } border rounded-[32px] p-6 shadow-2xl overflow-hidden transition-colors duration-200`}
       >
         
         <button 
           onClick={() => setPwaModalOpen(false)}
-          className="absolute top-5 right-5 p-2 rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all"
+          className={`absolute top-5 right-5 p-2 rounded-full ${
+            darkMode ? 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600 hover:text-zinc-900'
+          } transition-all`}
         >
           <X size={16} />
         </button>
@@ -38,29 +42,29 @@ export default function PwaInstallModal() {
             <Smartphone className="text-black" size={24} />
           </div>
           <div>
-            <h2 className="text-lg font-bold">Innovation Plus Web-APK</h2>
-            <p className="text-xs text-white/60">Cross-Platform Native Experience</p>
+            <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Innovation Plus Web-APK</h2>
+            <p className={`text-xs ${darkMode ? 'text-white/60' : 'text-zinc-500'}`}>Cross-Platform Native Experience</p>
           </div>
         </div>
 
         {installed ? (
           <div className="py-6 text-center space-y-2">
-            <CheckCircle2 size={40} className="text-emerald-400 mx-auto animate-bounce" />
+            <CheckCircle2 size={40} className="text-emerald-500 mx-auto animate-bounce" />
             <h3 className="text-base font-bold">Web-APK Application Installed!</h3>
-            <p className="text-xs text-white/60">Launch Innovation Plus directly from your home screen.</p>
+            <p className={`text-xs ${darkMode ? 'text-white/60' : 'text-zinc-500'}`}>Launch Innovation Plus directly from your home screen.</p>
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2 text-xs">
-              <div className="flex items-center gap-2 font-bold text-orange-400">
+            <div className={`p-4 rounded-2xl ${darkMode ? 'bg-white/5 border-white/10 text-white/70' : 'bg-zinc-50 border-zinc-200 text-zinc-600'} border space-y-2 text-xs`}>
+              <div className="flex items-center gap-2 font-bold text-orange-500">
                 <Download size={14} /> Direct Installation Instructions
               </div>
-              <p className="text-white/70 leading-relaxed">
+              <p className="leading-relaxed">
                 Install as a standalone Web-APK for Android, iOS, or Desktop. Enjoy zero latency, background offline caching, and full screen streaming.
               </p>
-              <div className="pt-2 grid grid-cols-2 gap-2 text-[11px] text-white/60">
-                <div className="p-2 rounded-xl bg-white/5 flex items-center gap-1.5"><Share size={12} className="text-sky-400" /> Tap Share & Add</div>
-                <div className="p-2 rounded-xl bg-white/5 flex items-center gap-1.5"><Globe size={12} className="text-emerald-400" /> Offline PWA Ready</div>
+              <div className="pt-2 grid grid-cols-2 gap-2 text-[11px]">
+                <div className={`p-2 rounded-xl ${darkMode ? 'bg-white/5 text-white/70' : 'bg-white border border-zinc-200 text-zinc-700'} flex items-center gap-1.5`}><Share size={12} className="text-sky-500" /> Tap Share & Add</div>
+                <div className={`p-2 rounded-xl ${darkMode ? 'bg-white/5 text-white/70' : 'bg-white border border-zinc-200 text-zinc-700'} flex items-center gap-1.5`}><Globe size={12} className="text-emerald-500" /> Offline PWA Ready</div>
               </div>
             </div>
 
@@ -71,8 +75,8 @@ export default function PwaInstallModal() {
               Install Web-APK Standalone App
             </button>
 
-            <div className="flex items-center justify-center gap-1.5 text-[10px] text-white/40">
-              <ShieldCheck size={12} className="text-orange-400" />
+            <div className={`flex items-center justify-center gap-1.5 text-[10px] ${darkMode ? 'text-white/40' : 'text-zinc-500'}`}>
+              <ShieldCheck size={12} className="text-orange-500" />
               <span>Signed & Certified Innovation Plus Mobile APK Package</span>
             </div>
           </div>

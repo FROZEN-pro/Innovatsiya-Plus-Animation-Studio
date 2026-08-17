@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AuthState, User, LanguageCode, ContentCategory, OfflineVaultItem } from '../types';
+import { AuthState, User, LanguageCode, ContentCategory, OfflineVaultItem, DashboardLayoutTheme, FloatingPlayerState, AppSettings, Video } from '../types';
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
@@ -13,9 +13,8 @@ interface AppState {
   setLanguage: (lang: LanguageCode) => void;
   
   darkMode: boolean;
+  setDarkMode: (dark: boolean) => void;
   toggleDarkMode: () => void;
-  
-  
   
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -34,14 +33,25 @@ interface AppState {
   isTelegramModalOpen: boolean;
   setTelegramModalOpen: (open: boolean) => void;
   
-  isBiometricModalOpen: boolean;
-  setBiometricModalOpen: (open: boolean) => void;
-  
   isPwaModalOpen: boolean;
   setPwaModalOpen: (open: boolean) => void;
-  appSettings: any;
-  setAppSettings: (settings: any) => void;
 
+  isProfileSettingsModalOpen: boolean;
+  setProfileSettingsModalOpen: (open: boolean) => void;
+  
+  pwaDeferredPrompt: any;
+  setPwaDeferredPrompt: (prompt: any) => void;
+
+  appSettings: AppSettings | null;
+  setAppSettings: (settings: AppSettings | null) => void;
+
+  activeLayoutTheme: DashboardLayoutTheme | null;
+  setActiveLayoutTheme: (theme: DashboardLayoutTheme | null) => void;
+
+  floatingPlayer: FloatingPlayerState;
+  openFloatingPlayer: (video: Video, currentTime?: number, isPlaying?: boolean) => void;
+  updateFloatingPlayer: (partial: Partial<FloatingPlayerState>) => void;
+  closeFloatingPlayer: () => void;
 }
 
 // Helper to load offline vault from localStorage
@@ -54,9 +64,24 @@ const loadInitialVault = (): OfflineVaultItem[] => {
   }
 };
 
-const savedLang = (localStorage.getItem('innovation_plus_lang') as LanguageCode) || 'en';
-const savedDarkMode = localStorage.getItem('innovation_plus_darkmode') === 'true';
+const getInitialDarkMode = (): boolean => {
+  try {
+    const saved = localStorage.getItem('innovation_plus_darkmode');
+    if (saved !== null && saved !== 'system') {
+      return saved === 'true';
+    }
+    // Automatically detect user's system OS theme (light/dark)
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
 
+const savedLang = (localStorage.getItem('innovation_plus_lang') as LanguageCode) || 'en';
+const initialDarkMode = getInitialDarkMode();
 
 export const useAppStore = create<AppState>((set, get) => ({
   language: savedLang,
@@ -65,14 +90,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ language: lang });
   },
   
-  darkMode: savedDarkMode,
+  darkMode: initialDarkMode,
+  setDarkMode: (dark: boolean) => {
+    localStorage.setItem('innovation_plus_darkmode', String(dark));
+    set({ darkMode: dark });
+  },
   toggleDarkMode: () => {
     const next = !get().darkMode;
     localStorage.setItem('innovation_plus_darkmode', String(next));
     set({ darkMode: next });
   },
-  
-  
   
   searchQuery: '',
   setSearchQuery: (searchQuery) => set({ searchQuery }),
@@ -104,14 +131,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   isTelegramModalOpen: false,
   setTelegramModalOpen: (open) => set({ isTelegramModalOpen: open }),
   
-  isBiometricModalOpen: false,
-  setBiometricModalOpen: (open) => set({ isBiometricModalOpen: open }),
-  
   isPwaModalOpen: false,
   setPwaModalOpen: (open) => set({ isPwaModalOpen: open }),
+
+  isProfileSettingsModalOpen: false,
+  setProfileSettingsModalOpen: (open) => set({ isProfileSettingsModalOpen: open }),
+
+  pwaDeferredPrompt: null,
+  setPwaDeferredPrompt: (pwaDeferredPrompt) => set({ pwaDeferredPrompt }),
 
   appSettings: null,
   setAppSettings: (appSettings) => set({ appSettings }),
 
+  activeLayoutTheme: null,
+  setActiveLayoutTheme: (activeLayoutTheme) => set({ activeLayoutTheme }),
+
+  floatingPlayer: {
+    isOpen: false,
+    video: null,
+    currentTime: 0,
+    isPlaying: false,
+    isMuted: false,
+  },
+  openFloatingPlayer: (video, currentTime = 0, isPlaying = true) => {
+    set({
+      floatingPlayer: {
+        isOpen: true,
+        video,
+        currentTime,
+        isPlaying,
+        isMuted: false,
+      }
+    });
+  },
+  updateFloatingPlayer: (partial) => {
+    set((state) => ({
+      floatingPlayer: { ...state.floatingPlayer, ...partial }
+    }));
+  },
+  closeFloatingPlayer: () => {
+    set((state) => ({
+      floatingPlayer: { ...state.floatingPlayer, isOpen: false }
+    }));
+  },
 }));
 

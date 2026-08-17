@@ -42,3 +42,11 @@ export async function updateUserSubscription(uid: string, subscriptionStatus: st
   return result[0];
 }
 
+export async function updateUserProfile(uid: string, data: { displayName?: string; photoURL?: string }) {
+  const result = await db.update(users)
+    .set(data)
+    .where(eq(users.uid, uid))
+    .returning();
+  return result[0];
+}
+

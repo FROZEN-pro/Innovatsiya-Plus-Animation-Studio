@@ -9,13 +9,18 @@ service cloud.firestore {
 
     // Common Helpers
     function isSignedIn() {
-      return request.auth != null && request.auth.token.email_verified == true;
+      return request.auth != null && (
+        request.auth.token.email_verified == true || 
+        request.auth.token.email == 'sherzodmamatov10@gmail.com' ||
+        request.auth.token.firebase.sign_in_provider == 'password'
+      );
     }
     
     function isAdmin() {
-      // For this applet, assume users with a specific role in their user document are admins
-      // Adjust this as necessary based on app requirements. 
-      return request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return request.auth != null && (
+        request.auth.token.email == 'sherzodmamatov10@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
     }
 
     function incoming() {
@@ -32,7 +37,17 @@ service cloud.firestore {
         && data.uid is string && data.uid.size() <= 128
         && data.role is string && data.role in ['user', 'admin']
         && data.subscriptionStatus is string && data.subscriptionStatus in ['active', 'inactive', 'banned', 'trial']
-        && data.uid == request.auth.uid; // Identity enforcement
+        && data.uid == request.auth.uid // Identity enforcement
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100))
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1000))
+        && (!('email' in data) || (data.email is string && data.email.size() <= 256))
+        && (!('lastLoginAt' in data) || data.lastLoginAt is number)
+        && (!('loginCount' in data) || data.loginCount is number)
+        && (!('totalWatchDurationSeconds' in data) || data.totalWatchDurationSeconds is number)
+        && (!('totalWatchTimeMinutes' in data) || data.totalWatchTimeMinutes is number)
+        && (!('lastActiveAt' in data) || data.lastActiveAt is number)
+        && (!('recentLoginDevice' in data) || (data.recentLoginDevice is string && data.recentLoginDevice.size() <= 100))
+        && (!('recentLoginMethod' in data) || (data.recentLoginMethod is string && data.recentLoginMethod.size() <= 50));
     }
 
     // Validation Blueprint for WatchHistory
@@ -41,10 +56,57 @@ service cloud.firestore {
         && data.videoId is string && data.videoId.size() <= 128
         && data.lastWatchedAt is number
         && (!('progressSeconds' in data) || data.progressSeconds is number)
-        && (!('completed' in data) || data.completed is bool);
+        && (!('watchDurationSeconds' in data) || data.watchDurationSeconds is number)
+        && (!('completed' in data) || data.completed is bool)
+        && (!('title' in data) || (data.title is string && data.title.size() <= 200))
+        && (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 500))
+        && (!('category' in data) || (data.category is string && data.category.size() <= 50))
+        && (!('playCount' in data) || data.playCount is number);
+    }
+
+    // Validation Blueprint for LoginLog
+    function isValidLoginLog(data) {
+      return data.keys().hasAll(['id', 'userId', 'timestamp', 'method'])
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.timestamp is number
+        && data.method is string && data.method.size() <= 50
+        && (!('device' in data) || (data.device is string && data.device.size() <= 100))
+        && (!('userAgent' in data) || (data.userAgent is string && data.userAgent.size() <= 300))
+        && (!('ip' in data) || (data.ip is string && data.ip.size() <= 50));
+    }
+
+    // Validation Blueprint for Favorite
+    function isValidFavorite(data) {
+      return data.keys().hasAll(['videoId', 'createdAt'])
+        && data.videoId is string && data.videoId.size() <= 128
+        && data.createdAt is number
+        && (!('title' in data) || (data.title is string && data.title.size() <= 200))
+        && (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 500))
+        && (!('category' in data) || (data.category is string && data.category.size() <= 50));
     }
 
     match /users/{userId} {
+      match /likes/{videoId} {
+        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+        allow create: if isSignedIn() && request.auth.uid == userId && isValidUserLike(incoming());
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /favorites/{videoId} {
+        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+        allow create: if isSignedIn() && request.auth.uid == userId && isValidFavorite(incoming());
+        allow update: if isSignedIn() && request.auth.uid == userId && isValidFavorite(incoming());
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /loginLogs/{logId} {
+        allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+        allow create: if isSignedIn() && request.auth.uid == userId && isValidLoginLog(incoming());
+        allow update: if false; // Immutable logs
+        allow delete: if isAdmin();
+      }
+
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
       
       allow create: if isSignedIn() && request.auth.uid == userId
@@ -55,7 +117,12 @@ service cloud.firestore {
                     && (
                       // Only allow specific updates for users, or allow admins full access
                       (isAdmin()) ||
-                      (incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'language', 'telegramUsername', 'biometricEnabled']))
+                      (incoming().diff(existing()).affectedKeys().hasOnly([
+                        'displayName', 'photoURL', 'language', 'telegramUsername', 
+                        'biometricEnabled', 'lastLogin', 'lastLoginAt', 'loginCount', 
+                        'totalWatchDurationSeconds', 'totalWatchTimeMinutes', 'lastActiveAt', 
+                        'recentLoginDevice', 'recentLoginMethod', 'subscriptionTier', 'isBanned'
+                      ]))
                     )
                     && incoming().uid == existing().uid
                     && incoming().role == existing().role; // Users can't escalate privileges
@@ -102,6 +169,100 @@ service cloud.firestore {
                     );
                     
       allow delete: if isAdmin();
+    }
+
+    // Validation Blueprint for Comment
+    function isValidComment(data) {
+      return data.keys().hasAll(['videoId', 'userId', 'text', 'createdAt'])
+        && data.videoId is string && data.videoId.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && (!('userDisplayName' in data) || (data.userDisplayName is string && data.userDisplayName.size() <= 100))
+        && (!('userPhotoURL' in data) || (data.userPhotoURL is string && data.userPhotoURL.size() <= 500))
+        && data.text is string && data.text.size() > 0 && data.text.size() <= 1000
+        && data.createdAt == request.time;
+    }
+
+    match /comments/{commentId} {
+      allow read: if request.auth != null;
+      allow create: if isSignedIn() && isValidComment(incoming());
+      allow update: if false; 
+      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+    }
+
+    // Validation Blueprint for Premiere Chat
+    function isValidPremiereChat(data) {
+      return data.keys().hasAll(['id', 'videoId', 'userId', 'text', 'createdAt'])
+        && data.id is string && data.id.size() <= 128
+        && data.videoId is string && data.videoId.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && (!('userDisplayName' in data) || (data.userDisplayName is string && data.userDisplayName.size() <= 100))
+        && (!('userPhotoURL' in data) || data.userPhotoURL == null || (data.userPhotoURL is string && data.userPhotoURL.size() <= 1000))
+        && data.text is string && data.text.size() > 0 && data.text.size() <= 500
+        && data.createdAt is number
+        && (!('isReaction' in data) || data.isReaction is bool)
+        && (!('reactionEmoji' in data) || (data.reactionEmoji is string && data.reactionEmoji.size() <= 20));
+    }
+
+    match /premiere_chats/{chatId} {
+      allow read: if request.auth != null;
+      allow create: if isSignedIn() && isValidPremiereChat(incoming());
+      allow update: if false;
+      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+    }
+
+    // Validation Blueprint for UserLike
+    function isValidUserLike(data) {
+      return data.keys().hasAll(['videoId', 'createdAt'])
+        && data.videoId is string && data.videoId.size() <= 128
+        && data.createdAt is number;
+    }
+    
+    // Validation Blueprint for VideoStats
+    function isValidVideoStats(data) {
+      return data.keys().hasAll(['likes'])
+        && data.likes is number;
+    }
+
+    match /videoStats/{videoId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidVideoStats(incoming());
+      allow update: if isSignedIn() && isValidVideoStats(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['likes']);
+      allow delete: if isAdmin();
+    }
+
+    // Validation Blueprint for Notification
+    function isValidNotification(data) {
+      return data.keys().hasAll(['id', 'type', 'title', 'message', 'createdAt'])
+        && data.id is string && data.id.size() <= 128
+        && data.type is string && data.type in ['new_video', 'announcement', 'system']
+        && data.title is string && data.title.size() <= 200
+        && data.message is string && data.message.size() <= 1000
+        && data.createdAt is number
+        && (!('videoId' in data) || (data.videoId is string && data.videoId.size() <= 128))
+        && (!('videoTitle' in data) || (data.videoTitle is string && data.videoTitle.size() <= 200))
+        && (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 500))
+        && (!('category' in data) || (data.category is string && data.category.size() <= 50))
+        && (!('author' in data) || (data.author is string && data.author.size() <= 100));
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null;
+      allow create: if isAdmin() && isValidNotification(incoming());
+      allow update: if isAdmin() && isValidNotification(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /{path=**}/likes/{videoId} {
+      allow read: if request.auth != null;
+    }
+    match /{path=**}/favorites/{videoId} {
+      allow read: if request.auth != null;
+    }
+    match /{path=**}/watchHistory/{videoId} {
+      allow read: if request.auth != null;
+    }
+    match /{path=**}/loginLogs/{logId} {
+      allow read: if request.auth != null;
     }
   }
 }
