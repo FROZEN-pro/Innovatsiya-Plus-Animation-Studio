@@ -14,11 +14,28 @@ import AdminPanel from './pages/AdminPanel';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import MiniPlayer from './components/MiniPlayer';
 import UserSettingsModal from './components/UserSettingsModal';
+import NetworkStatusToast from './components/NetworkStatusToast';
 
 export default function App() {
   const { setUser, setLoading } = useAuthStore();
 
-  const { appSettings, darkMode, setDarkMode } = useAppStore();
+  const { appSettings, setAppSettings, darkMode, setDarkMode } = useAppStore();
+
+  // Load app settings on startup
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const data = await res.json();
+          setAppSettings(data);
+        }
+      } catch (err) {
+        console.warn("Could not fetch initial app settings:", err);
+      }
+    };
+    fetchSettings();
+  }, [setAppSettings]);
 
   // Keep document element in sync with dark mode
   useEffect(() => {
@@ -141,6 +158,7 @@ export default function App() {
       </Routes>
       <MiniPlayer />
       <UserSettingsModal />
+      <NetworkStatusToast />
     </BrowserRouter>
   );
 }

@@ -80,6 +80,52 @@ const getInitialDarkMode = (): boolean => {
   }
 };
 
+export const defaultAppSettings: AppSettings = {
+  brandName: "INNOVATION+",
+  brandTag: "PRO",
+  showHeroBanner: false,
+  heroTitle: "",
+  heroSubtitle: "",
+  heroImageUrl: "",
+  dashboardLayout: "grid",
+  ambientGlowDefault: true,
+  footerAbout: "Innovation Plus is an ultra high-definition streaming & creative media hub.",
+  footerText: `© ${new Date().getFullYear()} Innovation Plus Media. All rights reserved.`,
+  supportEmail: "support@innovationplus.uz",
+  supportPhone: "+998 90 123 45 67",
+  socialTelegram: "https://t.me/InnovationPlus",
+  socialYoutube: "",
+  socialInstagram: "",
+  socialTwitter: "",
+  socialGithub: "",
+  enableClick: true,
+  enablePayme: true,
+  enableGooglePay: true,
+  proPlanTitle: "Pro Obuna",
+  proPlanPriceUzs: "49,000 UZS",
+  proPlanPriceNum: 49000,
+  proPlanFeature1: "Full HD 1080p 60fps",
+  proPlanFeature2: "15 ta oflayn yuklash",
+  vipPlanTitle: "VIP Oylik",
+  vipPlanPriceUzs: "99,000 UZS",
+  vipPlanPriceNum: 99000,
+  vipPlanFeature1: "Cheksiz 4K HDR & Dublyaj",
+  vipPlanFeature2: "Cheksiz Oflayn Xotira",
+  vipYearlyTitle: "VIP 1 Yillik",
+  vipYearlyPriceUzs: "890,000 UZS",
+  vipYearlyPriceNum: 890000,
+  vipYearlyDiscountBadge: "-25% CHEGIRMA",
+  vipYearlyFeature1: "12 oy to'liq VIP imkoniyat",
+  vipYearlyFeature2: "Shaxsiy qo'llab-quvvatlash",
+  vipCurrency: "so'm",
+  clickMerchantId: "",
+  clickServiceId: "",
+  paymeMerchantId: "",
+  googlePayMerchantId: "",
+  googlePayGateway: "example",
+  googlePayEnvironment: "TEST",
+};
+
 const savedLang = (localStorage.getItem('innovation_plus_lang') as LanguageCode) || 'en';
 const initialDarkMode = getInitialDarkMode();
 
@@ -140,8 +186,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   pwaDeferredPrompt: null,
   setPwaDeferredPrompt: (pwaDeferredPrompt) => set({ pwaDeferredPrompt }),
 
-  appSettings: null,
-  setAppSettings: (appSettings) => set({ appSettings }),
+  appSettings: defaultAppSettings,
+  setAppSettings: (appSettings) => set({ appSettings: appSettings || defaultAppSettings }),
 
   activeLayoutTheme: null,
   setActiveLayoutTheme: (activeLayoutTheme) => set({ activeLayoutTheme }),

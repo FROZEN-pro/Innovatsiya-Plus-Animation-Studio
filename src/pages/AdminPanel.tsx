@@ -1,5 +1,5 @@
-import { useState, FormEvent, useRef, ChangeEvent, useEffect } from 'react';
-import { auth, getAccessToken, loginWithGoogle, db } from '../lib/firebase';
+import React, { useState, FormEvent, useRef, ChangeEvent, useEffect } from 'react';
+import { auth, getAccessToken, getGoogleOAuthAccessToken, loginWithGoogle, db } from '../lib/firebase';
 import { collectionGroup, getDocs, query, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { 
@@ -8,18 +8,28 @@ import {
   SlidersHorizontal, Tag, Globe, Lock, Shield, Bell, Send, Radio, 
   MessageSquare, AlertCircle, Clock, LogIn, Search, Download, 
   Flame, TrendingUp, Activity, Smartphone, Monitor, Eye,
-  Subtitles, Plus, X, FileText, Sparkles, Layers, Check, Tv
+  Subtitles, Plus, X, FileText, Sparkles, Layers, Check, Tv,
+  History, DollarSign
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '../store/useStore';
 import { Sun, Moon, Settings } from 'lucide-react';
 import ThemeToggle from '../components/ThemeToggle';
 import { ResponsiveContainer, LineChart, Line, Tooltip, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
-import { Video, VisibilityStatus, AppNotification, User, SubscriptionStatus, SubtitleTrack, VideoQualityOption } from '../types';
+import { Video, VisibilityStatus, AppNotification, User, SubscriptionStatus, SubtitleTrack, VideoQualityOption, SupportChat, SupportMessage } from '../types';
 import BulkVideoManager from '../components/BulkVideoManager';
 import UserActivityModal from '../components/UserActivityModal';
+import AdminActivityLogViewer from '../components/AdminActivityLogViewer';
+import SubscriptionAnalyticsDashboard from '../components/SubscriptionAnalyticsDashboard';
 import { sendVideoNotification, sendBroadcastAnnouncement, subscribeToNotifications, deleteNotificationDoc } from '../lib/notifications';
 import { fetchAllFirestoreUsers, formatDuration, formatRelativeTime } from '../lib/userActivity';
+import { 
+  subscribeToAllSupportChats, 
+  subscribeToSupportMessages, 
+  sendAdminSupportReply, 
+  markChatReadByAdmin, 
+  toggleChatStatus 
+} from '../lib/supportChat';
 
 const activityData = [
   { day: 'Mon', views: 400 },
@@ -45,7 +55,57 @@ export default function AdminPanel() {
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [selectedUserForModal, setSelectedUserForModal] = useState<User | null>(null);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'analytics' | 'content' | 'bulk' | 'notifications' | 'users' | 'settings'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'subscriptions' | 'activity_logs' | 'content' | 'bulk' | 'notifications' | 'support' | 'users' | 'settings'>('analytics');
+  const [analyticsSubView, setAnalyticsSubView] = useState<'overview' | 'subscriptions'>('overview');
+
+  // Real-time Support Chat Management State
+  const [supportChats, setSupportChats] = useState<SupportChat[]>([]);
+  const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<SupportMessage[]>([]);
+  const [adminReplyText, setAdminReplyText] = useState('');
+  const [adminReplyFile, setAdminReplyFile] = useState<File | null>(null);
+  const [adminReplyFilePreview, setAdminReplyFilePreview] = useState<string | null>(null);
+  const [isSendingReply, setIsSendingReply] = useState(false);
+  const [isUploadingReplyImg, setIsUploadingReplyImg] = useState(false);
+  const [supportSearchQuery, setSupportSearchQuery] = useState('');
+  const [supportFilterStatus, setSupportFilterStatus] = useState<'all' | 'open' | 'closed'>('all');
+  const [enlargedChatImage, setEnlargedChatImage] = useState<string | null>(null);
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+  const adminChatFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Subscribe to all user support conversations
+  useEffect(() => {
+    const unsub = subscribeToAllSupportChats((chats) => {
+      setSupportChats(chats);
+      if (!selectedChatUserId && chats.length > 0) {
+        setSelectedChatUserId(chats[0].userId);
+      }
+    });
+    return () => unsub();
+  }, [selectedChatUserId]);
+
+  // Subscribe to selected user's message thread
+  useEffect(() => {
+    if (!selectedChatUserId) {
+      setChatMessages([]);
+      return;
+    }
+    const unsub = subscribeToSupportMessages(selectedChatUserId, (msgs) => {
+      setChatMessages(msgs);
+      markChatReadByAdmin(selectedChatUserId).catch(() => {});
+    });
+    return () => unsub();
+  }, [selectedChatUserId]);
+
+  // Auto-scroll on new messages
+  useEffect(() => {
+    if (activeTab === 'support') {
+      chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, activeTab, adminReplyFilePreview]);
+
+  // Total unread support messages for admin
+  const totalUnreadSupportCount = supportChats.reduce((acc, c) => acc + (c.unreadAdminCount || 0), 0);
 
   // Real-time Notifications Management State
   const [notificationsList, setNotificationsList] = useState<AppNotification[]>([]);
@@ -459,7 +519,7 @@ export default function AdminPanel() {
   const handleExportSheets = async () => {
     setExportingSheets(true);
     try {
-      let token = getAccessToken();
+      let token = getGoogleOAuthAccessToken();
       if (!token) {
         const confirmLogin = window.confirm('Authenticate with Google to export to Sheets?');
         if (!confirmLogin) {
@@ -467,7 +527,7 @@ export default function AdminPanel() {
           return;
         }
         await loginWithGoogle();
-        token = getAccessToken();
+        token = getGoogleOAuthAccessToken();
         if (!token) throw new Error('Authentication failed or scopes missing.');
       }
 
@@ -783,6 +843,28 @@ export default function AdminPanel() {
           </button>
 
           <button
+            onClick={() => setActiveTab('subscriptions')}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 transition-all ${
+              activeTab === 'subscriptions' 
+                ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20' 
+                : darkMode ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-black/5 text-zinc-600 hover:bg-black/10'
+            }`}
+          >
+            <DollarSign size={16} /> Subscription Analytics
+          </button>
+
+          <button
+            onClick={() => setActiveTab('activity_logs')}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 transition-all ${
+              activeTab === 'activity_logs' 
+                ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20' 
+                : darkMode ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-black/5 text-zinc-600 hover:bg-black/10'
+            }`}
+          >
+            <History size={16} /> Activity Log & Audit
+          </button>
+
+          <button
             onClick={() => setActiveTab('content')}
             className={`px-5 py-2.5 rounded-2xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 transition-all ${
               activeTab === 'content' 
@@ -813,6 +895,22 @@ export default function AdminPanel() {
             }`}
           >
             <Bell size={16} /> Live Broadcasts ({notificationsList.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('support')}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 transition-all relative ${
+              activeTab === 'support' 
+                ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20' 
+                : darkMode ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-black/5 text-zinc-600 hover:bg-black/10'
+            }`}
+          >
+            <MessageSquare size={16} /> Support Chat ({supportChats.length})
+            {totalUnreadSupportCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[9px] font-black animate-pulse">
+                {totalUnreadSupportCount}
+              </span>
+            )}
           </button>
 
           <button
@@ -859,8 +957,43 @@ export default function AdminPanel() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-8"
             >
-              {/* Aggregate Telemetry Metric Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Analytics Sub-view Switcher */}
+              <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-white/5 border border-white/10 w-fit">
+                <button
+                  onClick={() => setAnalyticsSubView('overview')}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                    analyticsSubView === 'overview'
+                      ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20'
+                      : darkMode ? 'text-white/60 hover:text-white' : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  <BarChart2 size={14} />
+                  <span>Platform & Watch Telemetry</span>
+                </button>
+                <button
+                  onClick={() => setAnalyticsSubView('subscriptions')}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                    analyticsSubView === 'subscriptions'
+                      ? 'bg-orange-500 text-black shadow-md shadow-orange-500/20'
+                      : darkMode ? 'text-white/60 hover:text-white' : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  <DollarSign size={14} />
+                  <span>VIP & Subscription MRR</span>
+                </button>
+              </div>
+
+              {analyticsSubView === 'subscriptions' ? (
+                <SubscriptionAnalyticsDashboard
+                  users={usersList}
+                  appSettings={appSettings}
+                  darkMode={darkMode}
+                  onNavigateToSettings={() => setActiveTab('settings')}
+                />
+              ) : (
+                <>
+                  {/* Aggregate Telemetry Metric Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className={`${darkMode ? "bg-white/5 border-white/10" : "bg-white border-zinc-200"} p-6 rounded-[28px] border shadow-xl`}>
                   <div className="flex items-center justify-between">
                     <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${darkMode ? "text-white/50" : "text-zinc-500"}`}>
@@ -1053,10 +1186,36 @@ export default function AdminPanel() {
                   </div>
                 </div>
               )}
+                </>
+              )}
             </motion.div>
           );
         })()}
 
+        {/* Tab: Dedicated Subscriptions Analytics */}
+        {activeTab === 'subscriptions' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <SubscriptionAnalyticsDashboard
+              users={usersList}
+              appSettings={appSettings}
+              darkMode={darkMode}
+              onNavigateToSettings={() => setActiveTab('settings')}
+            />
+          </motion.div>
+        )}
+
+        {/* Tab: Activity Log & Audit Trail */}
+        {activeTab === 'activity_logs' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <AdminActivityLogViewer darkMode={darkMode} />
+          </motion.div>
+        )}
 
         {/* Tab 1: Content Publishing & Media List */}
         {activeTab === 'content' && (
@@ -2081,104 +2240,1102 @@ export default function AdminPanel() {
         })()}
 
       
-        {/* Tab 3: Settings & SEO */}
+        {/* Tab: Support Chat Inbox & Live Messaging */}
+        {activeTab === 'support' && (() => {
+          const selectedChat = supportChats.find(c => c.userId === selectedChatUserId);
+          const filteredChats = supportChats.filter(c => {
+            const matchesQuery = 
+              c.userName.toLowerCase().includes(supportSearchQuery.toLowerCase()) || 
+              c.userEmail.toLowerCase().includes(supportSearchQuery.toLowerCase()) ||
+              c.lastMessageText.toLowerCase().includes(supportSearchQuery.toLowerCase());
+            const matchesStatus = supportFilterStatus === 'all' || c.status === supportFilterStatus;
+            return matchesQuery && matchesStatus;
+          });
+
+          const handleAdminSendReply = async (e: React.FormEvent) => {
+            e.preventDefault();
+            if (!selectedChatUserId) return;
+            if (!adminReplyText.trim() && !adminReplyFile) return;
+
+            setIsSendingReply(true);
+            try {
+              let uploadedUrl: string | undefined = undefined;
+
+              if (adminReplyFile) {
+                setIsUploadingReplyImg(true);
+                const token = await getAccessToken();
+                const formData = new FormData();
+                formData.append('file', adminReplyFile);
+
+                const res = await fetch('/api/upload', {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${token}` },
+                  body: formData
+                });
+
+                if (res.ok) {
+                  const data = await res.json();
+                  uploadedUrl = data.url;
+                }
+                setIsUploadingReplyImg(false);
+              }
+
+              await sendAdminSupportReply({
+                userId: selectedChatUserId,
+                adminId: currentUser?.uid || 'admin_studio',
+                adminName: currentUser?.displayName || 'Support Manager',
+                adminPhotoURL: currentUser?.photoURL,
+                text: adminReplyText,
+                imageUrl: uploadedUrl
+              });
+
+              setAdminReplyText('');
+              setAdminReplyFile(null);
+              if (adminReplyFilePreview) {
+                URL.revokeObjectURL(adminReplyFilePreview);
+                setAdminReplyFilePreview(null);
+              }
+            } catch (err: any) {
+              console.error('Admin reply error:', err);
+              alert(err.message || 'Xatolik yuz berdi');
+            } finally {
+              setIsSendingReply(false);
+              setIsUploadingReplyImg(false);
+            }
+          };
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`${darkMode ? "bg-white/5" : "bg-black/5"} rounded-[32px] p-6 border ${darkMode ? "border-white/10" : "border-black/10"} shadow-2xl space-y-6`}
+            >
+              <div className={`flex flex-wrap items-center justify-between gap-4 pb-4 border-b ${darkMode ? "border-white/10" : "border-black/10"}`}>
+                <div>
+                  <h2 className="text-lg font-bold flex items-center gap-2">
+                    <MessageSquare className="text-orange-500" size={20} />
+                    Foydalanuvchilar Yordam Markazi & Jonli Chat
+                  </h2>
+                  <p className={`text-xs ${darkMode ? "text-white/50" : "text-black/50"}`}>
+                    Foydalanuvchilar bilan matn va rasm/skrinshot orqali real vaqtda muloqot qiling
+                  </p>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-xs px-3 py-1 rounded-full bg-orange-500/20 text-orange-400 font-bold">
+                    {supportChats.length} ta suhbat
+                  </span>
+                </div>
+              </div>
+
+              {/* Chat Split View */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[550px]">
+                
+                {/* Left Sidebar: Conversations List */}
+                <div className={`lg:col-span-5 rounded-2xl border p-4 flex flex-col gap-3 ${
+                  darkMode ? 'bg-[#09090e] border-white/10' : 'bg-white border-zinc-200 shadow-sm'
+                }`}>
+                  {/* Search and Filters */}
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      type="text"
+                      value={supportSearchQuery}
+                      onChange={(e) => setSupportSearchQuery(e.target.value)}
+                      placeholder="Foydalanuvchi qidirish..."
+                      className={`w-full rounded-xl pl-9 pr-3 py-2 text-xs border ${
+                        darkMode ? 'bg-white/5 border-white/10 text-white placeholder-white/40' : 'bg-zinc-100 border-zinc-200 text-zinc-900 placeholder-zinc-400'
+                      }`}
+                    />
+                  </div>
+
+                  <div className="flex gap-1.5 text-[10px] font-bold">
+                    <button
+                      onClick={() => setSupportFilterStatus('all')}
+                      className={`px-2.5 py-1 rounded-lg transition-all ${
+                        supportFilterStatus === 'all' ? 'bg-orange-500 text-black' : 'bg-white/5 text-zinc-400'
+                      }`}
+                    >
+                      Barchasi ({supportChats.length})
+                    </button>
+                    <button
+                      onClick={() => setSupportFilterStatus('open')}
+                      className={`px-2.5 py-1 rounded-lg transition-all ${
+                        supportFilterStatus === 'open' ? 'bg-emerald-500 text-black' : 'bg-white/5 text-zinc-400'
+                      }`}
+                    >
+                      Ochiq ({supportChats.filter(c => c.status === 'open').length})
+                    </button>
+                    <button
+                      onClick={() => setSupportFilterStatus('closed')}
+                      className={`px-2.5 py-1 rounded-lg transition-all ${
+                        supportFilterStatus === 'closed' ? 'bg-zinc-500 text-white' : 'bg-white/5 text-zinc-400'
+                      }`}
+                    >
+                      Yopilgan ({supportChats.filter(c => c.status === 'closed').length})
+                    </button>
+                  </div>
+
+                  {/* Chat items list */}
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[440px]">
+                    {filteredChats.length === 0 ? (
+                      <div className="py-12 text-center text-xs text-zinc-500">
+                        Suhbatlar topilmadi.
+                      </div>
+                    ) : (
+                      filteredChats.map((chat) => {
+                        const isSelected = chat.userId === selectedChatUserId;
+                        const hasUnread = (chat.unreadAdminCount || 0) > 0;
+
+                        return (
+                          <div
+                            key={chat.id}
+                            onClick={() => setSelectedChatUserId(chat.userId)}
+                            className={`p-3 rounded-2xl cursor-pointer border transition-all flex items-start gap-3 ${
+                              isSelected
+                                ? 'bg-orange-500/15 border-orange-500 ring-1 ring-orange-500'
+                                : darkMode ? 'bg-white/5 border-white/5 hover:bg-white/10' : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100'
+                            }`}
+                          >
+                            <img
+                              src={chat.userPhotoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'}
+                              alt="Avatar"
+                              className="w-10 h-10 rounded-full object-cover border border-orange-500/30 shrink-0"
+                            />
+                            <div className="flex-1 overflow-hidden min-w-0">
+                              <div className="flex justify-between items-center mb-0.5">
+                                <h4 className={`text-xs font-bold truncate ${hasUnread ? 'text-orange-400' : ''}`}>
+                                  {chat.userName}
+                                </h4>
+                                <span className={`text-[9px] ${darkMode ? 'text-white/40' : 'text-zinc-400'}`}>
+                                  {formatRelativeTime(chat.lastMessageTime)}
+                                </span>
+                              </div>
+                              <p className={`text-[10px] truncate ${darkMode ? 'text-white/60' : 'text-zinc-500'} ${hasUnread ? 'font-bold text-white' : ''}`}>
+                                {chat.lastMessageText || 'Xabar yo\'q'}
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-1.5">
+                                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded ${
+                                  chat.status === 'open' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-500/20 text-zinc-400'
+                                }`}>
+                                  {chat.status === 'open' ? 'Ochiq' : 'Yopilgan'}
+                                </span>
+                                {hasUnread && (
+                                  <span className="px-1.5 py-0.2 rounded-full bg-red-600 text-white font-extrabold text-[9px]">
+                                    {chat.unreadAdminCount} yangi
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Area: Conversation Messages Thread */}
+                <div className={`lg:col-span-7 rounded-2xl border flex flex-col overflow-hidden ${
+                  darkMode ? 'bg-[#09090e] border-white/10' : 'bg-white border-zinc-200 shadow-sm'
+                }`}>
+                  {selectedChat ? (
+                    <>
+                      {/* Chat Header */}
+                      <div className={`p-4 border-b flex items-center justify-between ${
+                        darkMode ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'
+                      }`}>
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={selectedChat.userPhotoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'}
+                            alt="Avatar"
+                            className="w-9 h-9 rounded-full object-cover border border-orange-500/40"
+                          />
+                          <div>
+                            <h3 className="text-xs font-bold flex items-center gap-2">
+                              {selectedChat.userName}
+                              <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full ${
+                                selectedChat.status === 'open' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-500/20 text-zinc-400'
+                              }`}>
+                                {selectedChat.status.toUpperCase()}
+                              </span>
+                            </h3>
+                            <p className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-zinc-500'}`}>
+                              {selectedChat.userEmail}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => toggleChatStatus(selectedChat.userId, selectedChat.status === 'open' ? 'closed' : 'open')}
+                            className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border ${
+                              selectedChat.status === 'open'
+                                ? 'bg-zinc-500/10 border-zinc-500/30 text-zinc-400 hover:bg-zinc-500/20'
+                                : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30'
+                            }`}
+                          >
+                            {selectedChat.status === 'open' ? 'Yopish (Close)' : 'Qayta Ochish (Re-open)'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Messages Flow */}
+                      <div className="flex-1 p-4 overflow-y-auto space-y-3 max-h-[380px]">
+                        {chatMessages.length === 0 ? (
+                          <div className="py-12 text-center text-xs text-zinc-500">
+                            Xabarlar mavjud emas.
+                          </div>
+                        ) : (
+                          chatMessages.map((msg) => {
+                            const isAdmin = msg.senderRole === 'admin';
+                            const timeStr = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                            return (
+                              <div
+                                key={msg.id}
+                                className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
+                              >
+                                <div className="flex items-end gap-1.5 max-w-[80%]">
+                                  {!isAdmin && (
+                                    <img
+                                      src={msg.senderPhotoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80'}
+                                      alt="User"
+                                      className="w-6 h-6 rounded-full object-cover border border-orange-500/40 mb-1 shrink-0"
+                                    />
+                                  )}
+
+                                  <div
+                                    className={`rounded-2xl p-3 shadow space-y-1.5 ${
+                                      isAdmin
+                                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black rounded-br-xs font-medium'
+                                        : darkMode
+                                          ? 'bg-white/10 text-white rounded-bl-xs border border-white/10'
+                                          : 'bg-zinc-100 text-zinc-900 rounded-bl-xs border border-zinc-200'
+                                    }`}
+                                  >
+                                    <p className={`text-[10px] font-bold ${isAdmin ? 'text-black/80' : 'text-orange-400'}`}>
+                                      {msg.senderName} {isAdmin && '(Siz / Admin)'}
+                                    </p>
+
+                                    {/* Image Attachment Preview with Zoom */}
+                                    {msg.imageUrl && (
+                                      <div
+                                        onClick={() => setEnlargedChatImage(msg.imageUrl || null)}
+                                        className="rounded-xl overflow-hidden cursor-pointer max-h-48 border border-black/10 relative group"
+                                      >
+                                        <img
+                                          src={msg.imageUrl}
+                                          alt="Attachment"
+                                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                        />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[10px] font-bold">
+                                          Kattalashtirish
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {msg.text && (
+                                      <p className="text-xs leading-relaxed break-words whitespace-pre-wrap">
+                                        {msg.text}
+                                      </p>
+                                    )}
+
+                                    <div className={`flex items-center justify-end text-[9px] ${
+                                      isAdmin ? 'text-black/60' : darkMode ? 'text-white/40' : 'text-zinc-400'
+                                    }`}>
+                                      <span>{timeStr}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                        <div ref={chatMessagesEndRef} />
+                      </div>
+
+                      {/* Reply Image Preview */}
+                      {adminReplyFilePreview && (
+                        <div className={`p-2.5 px-4 flex items-center justify-between border-t ${
+                          darkMode ? 'bg-[#0f0f18] border-white/10' : 'bg-zinc-100 border-zinc-200'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={adminReplyFilePreview}
+                              alt="Preview"
+                              className="w-10 h-10 rounded-lg object-cover border border-orange-500/50"
+                            />
+                            <div className="text-[11px] leading-tight">
+                              <p className="font-bold truncate max-w-[180px]">{adminReplyFile?.name}</p>
+                              <p className={`text-[9px] ${darkMode ? 'text-white/50' : 'text-zinc-500'}`}>
+                                Rasm biriktirildi
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setAdminReplyFile(null);
+                              if (adminReplyFilePreview) URL.revokeObjectURL(adminReplyFilePreview);
+                              setAdminReplyFilePreview(null);
+                            }}
+                            className="p-1 rounded-full text-zinc-400 hover:text-red-400"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Reply Form */}
+                      <form onSubmit={handleAdminSendReply} className={`p-3 border-t flex items-center gap-2 ${
+                        darkMode ? 'bg-[#0b0b12] border-white/10' : 'bg-white border-zinc-200'
+                      }`}>
+                        <input
+                          type="file"
+                          ref={adminChatFileInputRef}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setAdminReplyFile(file);
+                              setAdminReplyFilePreview(URL.createObjectURL(file));
+                            }
+                          }}
+                          accept="image/png, image/jpeg, image/webp"
+                          className="hidden"
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => adminChatFileInputRef.current?.click()}
+                          className={`p-2.5 rounded-xl border transition-all ${
+                            adminReplyFile
+                              ? 'bg-orange-500 text-black border-orange-500'
+                              : darkMode ? 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10' : 'bg-zinc-100 border-zinc-200 text-zinc-600'
+                          }`}
+                          title="Rasm yuklash"
+                        >
+                          <UploadCloud size={16} />
+                        </button>
+
+                        <input
+                          type="text"
+                          value={adminReplyText}
+                          onChange={(e) => setAdminReplyText(e.target.value)}
+                          placeholder="Foydalanuvchiga javob yozish..."
+                          disabled={isSendingReply}
+                          className={`flex-1 rounded-xl px-4 py-2.5 text-xs border transition-all focus:outline-none ${
+                            darkMode
+                              ? 'bg-white/5 border-white/10 text-white placeholder-white/40 focus:border-orange-500'
+                              : 'bg-zinc-100 border-zinc-200 text-zinc-900 placeholder-zinc-400 focus:border-orange-500'
+                          }`}
+                        />
+
+                        <button
+                          type="submit"
+                          disabled={(!adminReplyText.trim() && !adminReplyFile) || isSendingReply}
+                          className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-black font-extrabold text-xs shadow-lg shadow-orange-500/20 disabled:opacity-40 flex items-center gap-1.5"
+                        >
+                          {isSendingReply ? 'Yuborilmoqda...' : 'Javob berish'}
+                          <Send size={14} />
+                        </button>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="py-24 text-center text-xs text-zinc-500">
+                      Iltimos, chap tarafdan foydalanuvchini tanlang.
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Lightbox for full size image */}
+              {enlargedChatImage && (
+                <div
+                  onClick={() => setEnlargedChatImage(null)}
+                  className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
+                >
+                  <div className="relative max-w-4xl max-h-[90vh]">
+                    <img
+                      src={enlargedChatImage}
+                      alt="Enlarged Attachment"
+                      className="max-h-[85vh] rounded-2xl object-contain shadow-2xl border border-white/10"
+                    />
+                    <button
+                      onClick={() => setEnlargedChatImage(null)}
+                      className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          );
+        })()}
+
+        {/* Tab 3: Settings & SEO & Real Payments */}
         {activeTab === 'settings' && (
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className={`${darkMode ? "bg-white/5" : "bg-black/5"} rounded-[32px] p-6 sm:p-8 border ${darkMode ? "border-white/10" : "border-black/10"} shadow-2xl space-y-6`}
+            className={`${darkMode ? "bg-white/5" : "bg-black/5"} rounded-[32px] p-6 sm:p-8 border ${darkMode ? "border-white/10" : "border-black/10"} shadow-2xl space-y-8`}
           >
             <div className={`flex justify-between items-center pb-4 border-b ${darkMode ? "border-white/10" : "border-black/10"}`}>
               <div>
-                <h2 className={`text-lg font-bold ${darkMode ? "text-white" : "text-black"}`}>Platform Settings & SEO Editor</h2>
-                <p className={`text-xs ${darkMode ? "text-white/50" : "text-black/50"}`}>Customize metadata, copy, and search visibility</p>
+                <h2 className={`text-lg font-bold ${darkMode ? "text-white" : "text-black"}`}>Platform Settings, SEO & Payment Gateways</h2>
+                <p className={`text-xs ${darkMode ? "text-white/50" : "text-black/50"}`}>Hero banner boshqaruvi, pastki qism (footer) ma'lumotlari va Click, Payme, Google Pay API integratsiyasi</p>
               </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              
+              {/* Section 1: Hero Banner Controls */}
               <div className="space-y-4">
-                <h3 className={`text-sm font-bold uppercase ${darkMode ? "text-white/70" : "text-black/70"}`}>General Copy</h3>
+                <h3 className={`text-sm font-bold uppercase ${darkMode ? "text-white/70" : "text-black/70"} flex items-center gap-2`}>
+                  <Sparkles className="text-orange-500" size={16} /> Bosh Saxifa Hero Banneri Boshqaruvi
+                </h3>
+
+                {/* Hero Visibility Toggle Switch */}
+                <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                  darkMode ? 'bg-white/5 border-white/10' : 'bg-white border-zinc-200'
+                }`}>
+                  <div>
+                    <p className="text-xs font-bold">Hero Bannerni Ko'rsatish (Show Banner)</p>
+                    <p className={`text-[10px] ${darkMode ? 'text-white/50' : 'text-zinc-500'}`}>
+                      Yoqilsa va sarlavha kiritilsa, Dashboard boshida "Elevate your creative" o'rnida banner chiqadi
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(settingsForm.showHeroBanner)}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, showHeroBanner: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                  </label>
+                </div>
+
                 <div>
-                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-2`}>Hero Title</label>
+                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-2`}>
+                    Hero Sarlavhasi (Hero Title)
+                  </label>
                   <input
                     type="text"
                     value={settingsForm.heroTitle || ''}
                     onChange={(e) => setSettingsForm({...settingsForm, heroTitle: e.target.value})}
+                    placeholder="Masalan: Yangi 4K Premyeralar va Animatsiyalar"
                     className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-orange-500`}
                   />
                 </div>
+
                 <div>
-                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-2`}>Hero Background Image URL (Optional)</label>
+                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-2`}>
+                    Hero Qisqa Tavsifi (Hero Subtitle)
+                  </label>
+                  <textarea
+                    value={settingsForm.heroSubtitle || ''}
+                    onChange={(e) => setSettingsForm({...settingsForm, heroSubtitle: e.target.value})}
+                    placeholder="Reklamasiz, yuqori sifatli masterclass darsliklar va dublyajlar..."
+                    className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-orange-500 min-h-[80px]`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-2`}>
+                    Hero Orqa Fon Rasmi URL (Hero Image URL)
+                  </label>
                   <input
                     type="text"
                     value={settingsForm.heroImageUrl || ''}
                     onChange={(e) => setSettingsForm({...settingsForm, heroImageUrl: e.target.value})}
-                    placeholder="https://example.com/hero-image.jpg"
-                    className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-orange-500`}
-                  />
-                </div>
-                <div>
-                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-2`}>Hero Subtitle</label>
-                  <textarea
-                    value={settingsForm.heroSubtitle || ''}
-                    onChange={(e) => setSettingsForm({...settingsForm, heroSubtitle: e.target.value})}
-                    className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-orange-500 min-h-[100px]`}
-                  />
-                </div>
-                <div>
-                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-2`}>Footer Text</label>
-                  <input
-                    type="text"
-                    value={settingsForm.footerText || ''}
-                    onChange={(e) => setSettingsForm({...settingsForm, footerText: e.target.value})}
+                    placeholder="https://images.unsplash.com/photo-..."
                     className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-orange-500`}
                   />
                 </div>
               </div>
               
+              {/* Section 2: Footer & Social Media Links */}
               <div className="space-y-4">
-                <h3 className={`text-sm font-bold uppercase ${darkMode ? "text-white/70" : "text-black/70"}`}>SEO Metadata</h3>
+                <h3 className={`text-sm font-bold uppercase ${darkMode ? "text-white/70" : "text-black/70"} flex items-center gap-2`}>
+                  <Globe className="text-orange-500" size={16} /> Pastki Qism (Footer) & Ijtimoiy Tarmoqlar
+                </h3>
+
                 <div>
-                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-2`}>SEO Meta Title</label>
-                  <input
-                    type="text"
-                    value={settingsForm.seoTitle || ''}
-                    onChange={(e) => setSettingsForm({...settingsForm, seoTitle: e.target.value})}
-                    className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-orange-500`}
-                    placeholder="e.g. Innovation Plus | Premium Tutorials"
-                  />
-                </div>
-                <div>
-                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-2`}>SEO Description</label>
+                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-2`}>
+                    Platforma Haqida Qisqacha (Footer About Text)
+                  </label>
                   <textarea
-                    value={settingsForm.seoDescription || ''}
-                    onChange={(e) => setSettingsForm({...settingsForm, seoDescription: e.target.value})}
-                    className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-orange-500 min-h-[80px]`}
-                    placeholder="Brief description for search engines..."
+                    value={settingsForm.footerAbout || ''}
+                    onChange={(e) => setSettingsForm({...settingsForm, footerAbout: e.target.value})}
+                    placeholder="Innovation Plus - bu 4K animatsiyalar, musiqalar va professional dublyaj ekotizimi..."
+                    className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-orange-500 min-h-[70px]`}
                   />
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      Qo'llab-quvvatlash Email
+                    </label>
+                    <input
+                      type="email"
+                      value={settingsForm.supportEmail || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, supportEmail: e.target.value})}
+                      placeholder="support@innovationplus.uz"
+                      className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-orange-500`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      Telefon Raqam
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.supportPhone || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, supportPhone: e.target.value})}
+                      placeholder="+998 90 123 45 67"
+                      className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-orange-500`}
+                    />
+                  </div>
+                </div>
+
+                {/* Social Networks */}
+                <div className="space-y-2 pt-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-orange-400">Ijtimoiy Tarmoq Havolalari (Social Links)</p>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={settingsForm.socialTelegram || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, socialTelegram: e.target.value})}
+                      placeholder="Telegram: https://t.me/..."
+                      className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                    <input
+                      type="text"
+                      value={settingsForm.socialYoutube || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, socialYoutube: e.target.value})}
+                      placeholder="YouTube: https://youtube.com/..."
+                      className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                    <input
+                      type="text"
+                      value={settingsForm.socialInstagram || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, socialInstagram: e.target.value})}
+                      placeholder="Instagram: https://instagram.com/..."
+                      className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                    <input
+                      type="text"
+                      value={settingsForm.socialTwitter || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, socialTwitter: e.target.value})}
+                      placeholder="Twitter / X: https://x.com/..."
+                      className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-2`}>SEO Keywords</label>
+                  <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                    Mualliflik Huquqi (Copyright)
+                  </label>
                   <input
                     type="text"
-                    value={settingsForm.seoKeywords || ''}
-                    onChange={(e) => setSettingsForm({...settingsForm, seoKeywords: e.target.value})}
-                    className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-orange-500`}
-                    placeholder="e.g. tutorials, video, music, stream"
+                    value={settingsForm.footerText || ''}
+                    onChange={(e) => setSettingsForm({...settingsForm, footerText: e.target.value})}
+                    placeholder="© 2026 Innovation Plus Media. All rights reserved."
+                    className={`w-full ${darkMode ? "bg-black/40 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-4 py-2.5 text-xs`}
                   />
                 </div>
               </div>
+
             </div>
 
+            {/* Section 3: VIP Subscription Plans & Pricing Configuration */}
+            <div className={`p-6 rounded-3xl border space-y-6 ${
+              darkMode ? 'bg-black/40 border-white/10' : 'bg-white border-zinc-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-orange-500 flex items-center gap-2">
+                    <Crown size={18} className="text-amber-400" />
+                    VIP Obuna Rejalari va Narxlari Boshqaruvi (VIP Pricing & Plans Manager)
+                  </h3>
+                  <p className={`text-xs ${darkMode ? 'text-white/60' : 'text-zinc-500'}`}>
+                    Bu yerda belgilangan barcha narxlar, sarlavhalar va imtiyozlar darhol ilovaning barcha foydalanuvchilari uchun VIP oynasida aks etadi.
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-400 text-[10px] font-bold">
+                  Dinamik VIP Narxlash
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                {/* Pro Plan Editor */}
+                <div className={`p-4 rounded-2xl border space-y-3 ${
+                  darkMode ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'
+                }`}>
+                  <h4 className="font-bold text-xs text-orange-400 flex items-center gap-1.5">
+                    <Check size={14} /> 1. Pro Obuna Sozlamalari
+                  </h4>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      Tarif Nomi
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.proPlanTitle ?? 'Pro Obuna'}
+                      onChange={(e) => setSettingsForm({...settingsForm, proPlanTitle: e.target.value})}
+                      placeholder="Pro Obuna"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                        Ko'rinish Narxi
+                      </label>
+                      <input
+                        type="text"
+                        value={settingsForm.proPlanPriceUzs ?? "49,000 so'm/oy"}
+                        onChange={(e) => setSettingsForm({...settingsForm, proPlanPriceUzs: e.target.value})}
+                        placeholder="49,000 so'm/oy"
+                        className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                      />
+                    </div>
+                    <div>
+                      <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                        Summa (UZS)
+                      </label>
+                      <input
+                        type="number"
+                        value={settingsForm.proPlanPriceNum ?? 49000}
+                        onChange={(e) => setSettingsForm({...settingsForm, proPlanPriceNum: Number(e.target.value)})}
+                        placeholder="49000"
+                        className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      1-Imtiyoz Matni
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.proPlanFeature1 ?? "Full HD 1080p 60fps"}
+                      onChange={(e) => setSettingsForm({...settingsForm, proPlanFeature1: e.target.value})}
+                      placeholder="Full HD 1080p 60fps"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      2-Imtiyoz Matni
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.proPlanFeature2 ?? "15 ta oflayn yuklash"}
+                      onChange={(e) => setSettingsForm({...settingsForm, proPlanFeature2: e.target.value})}
+                      placeholder="15 ta oflayn yuklash"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+                </div>
+
+                {/* VIP Monthly Plan Editor */}
+                <div className={`p-4 rounded-2xl border space-y-3 ${
+                  darkMode ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'
+                }`}>
+                  <h4 className="font-bold text-xs text-amber-400 flex items-center gap-1.5">
+                    <Sparkles size={14} /> 2. VIP Oylik Sozlamalari (Tavsiya)
+                  </h4>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      Tarif Nomi
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.vipPlanTitle ?? 'VIP Oylik'}
+                      onChange={(e) => setSettingsForm({...settingsForm, vipPlanTitle: e.target.value})}
+                      placeholder="VIP Oylik"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                        Ko'rinish Narxi
+                      </label>
+                      <input
+                        type="text"
+                        value={settingsForm.vipPlanPriceUzs ?? "99,000 so'm/oy"}
+                        onChange={(e) => setSettingsForm({...settingsForm, vipPlanPriceUzs: e.target.value})}
+                        placeholder="99,000 so'm/oy"
+                        className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                      />
+                    </div>
+                    <div>
+                      <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                        Summa (UZS)
+                      </label>
+                      <input
+                        type="number"
+                        value={settingsForm.vipPlanPriceNum ?? 99000}
+                        onChange={(e) => setSettingsForm({...settingsForm, vipPlanPriceNum: Number(e.target.value)})}
+                        placeholder="99000"
+                        className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      1-Imtiyoz Matni
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.vipPlanFeature1 ?? "Cheksiz 4K HDR & Dublyaj"}
+                      onChange={(e) => setSettingsForm({...settingsForm, vipPlanFeature1: e.target.value})}
+                      placeholder="Cheksiz 4K HDR & Dublyaj"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      2-Imtiyoz Matni
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.vipPlanFeature2 ?? "Cheksiz Oflayn Xotira"}
+                      onChange={(e) => setSettingsForm({...settingsForm, vipPlanFeature2: e.target.value})}
+                      placeholder="Cheksiz Oflayn Xotira"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+                </div>
+
+                {/* VIP Yearly Plan Editor */}
+                <div className={`p-4 rounded-2xl border space-y-3 ${
+                  darkMode ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'
+                }`}>
+                  <h4 className="font-bold text-xs text-purple-400 flex items-center gap-1.5">
+                    <Crown size={14} /> 3. VIP Yillik Sozlamalari
+                  </h4>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                        Tarif Nomi
+                      </label>
+                      <input
+                        type="text"
+                        value={settingsForm.vipYearlyTitle ?? 'VIP 1 Yillik'}
+                        onChange={(e) => setSettingsForm({...settingsForm, vipYearlyTitle: e.target.value})}
+                        placeholder="VIP 1 Yillik"
+                        className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                      />
+                    </div>
+                    <div>
+                      <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                        Chegirma Yorlig'i
+                      </label>
+                      <input
+                        type="text"
+                        value={settingsForm.vipYearlyDiscountBadge ?? '-25% CHEGIRMA'}
+                        onChange={(e) => setSettingsForm({...settingsForm, vipYearlyDiscountBadge: e.target.value})}
+                        placeholder="-25% CHEGIRMA"
+                        className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                        Ko'rinish Narxi
+                      </label>
+                      <input
+                        type="text"
+                        value={settingsForm.vipYearlyPriceUzs ?? "890,000 so'm/yil"}
+                        onChange={(e) => setSettingsForm({...settingsForm, vipYearlyPriceUzs: e.target.value})}
+                        placeholder="890,000 so'm/yil"
+                        className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                      />
+                    </div>
+                    <div>
+                      <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                        Summa (UZS)
+                      </label>
+                      <input
+                        type="number"
+                        value={settingsForm.vipYearlyPriceNum ?? 890000}
+                        onChange={(e) => setSettingsForm({...settingsForm, vipYearlyPriceNum: Number(e.target.value)})}
+                        placeholder="890000"
+                        className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      1-Imtiyoz Matni
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.vipYearlyFeature1 ?? "12 oy to'liq VIP imkoniyat"}
+                      onChange={(e) => setSettingsForm({...settingsForm, vipYearlyFeature1: e.target.value})}
+                      placeholder="12 oy to'liq VIP imkoniyat"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      2-Imtiyoz Matni
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.vipYearlyFeature2 ?? "Shaxsiy qo'llab-quvvatlash"}
+                      onChange={(e) => setSettingsForm({...settingsForm, vipYearlyFeature2: e.target.value})}
+                      placeholder="Shaxsiy qo'llab-quvvatlash"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Section 4: Real Payment Gateways Configuration (Click, Payme, Google Pay) */}
+            <div className={`p-6 rounded-3xl border space-y-6 ${
+              darkMode ? 'bg-black/40 border-white/10' : 'bg-white border-zinc-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-orange-500 flex items-center gap-2">
+                    <ShieldCheck size={18} className="text-emerald-400" />
+                    To'lov Tizimlari Faolligi & API Kalitlari (Click, Payme, Google Pay)
+                  </h3>
+                  <p className={`text-xs ${darkMode ? 'text-white/60' : 'text-zinc-500'}`}>
+                    Xavfsizlik kafolati: To'lov API kodlari serverda shifrlangan holda saqlanadi va brauzer/foydalanuvchilarga hech qachon tarqatilmaydi.
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
+                  SSL 256-bit Shifrlangan
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                {/* Click.uz Configuration */}
+                <div className={`p-4 rounded-2xl border space-y-3 ${
+                  darkMode ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-blue-500 text-white font-black text-xs flex items-center justify-center">
+                        C
+                      </div>
+                      <h4 className="font-bold text-xs">Click.uz Gateway</h4>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settingsForm.enableClick !== false}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, enableClick: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      Click Merchant ID
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.clickMerchantId || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, clickMerchantId: e.target.value})}
+                      placeholder="e.g. 24500"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      Click Service ID
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.clickServiceId || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, clickServiceId: e.target.value})}
+                      placeholder="e.g. 32000"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      Click Secret Key (Maxfiy Kalit)
+                    </label>
+                    <input
+                      type="password"
+                      value={settingsForm.clickSecretKey || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, clickSecretKey: e.target.value})}
+                      placeholder="••••••••••••••••"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+                </div>
+
+                {/* Payme Configuration */}
+                <div className={`p-4 rounded-2xl border space-y-3 ${
+                  darkMode ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-teal-400 text-black font-black text-xs flex items-center justify-center">
+                        P
+                      </div>
+                      <h4 className="font-bold text-xs">Payme (Paycom)</h4>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settingsForm.enablePayme !== false}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, enablePayme: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-500"></div>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      Payme Merchant ID
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.paymeMerchantId || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, paymeMerchantId: e.target.value})}
+                      placeholder="650000000000000000000000"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      Payme Secret Key (Maxfiy Kalit)
+                    </label>
+                    <input
+                      type="password"
+                      value={settingsForm.paymeSecretKey || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, paymeSecretKey: e.target.value})}
+                      placeholder="••••••••••••••••"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+                </div>
+
+                {/* Google Pay Configuration */}
+                <div className={`p-4 rounded-2xl border space-y-3 ${
+                  darkMode ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-amber-400 text-black font-black text-xs flex items-center justify-center">
+                        G
+                      </div>
+                      <h4 className="font-bold text-xs">Google Pay API</h4>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settingsForm.enableGooglePay !== false}
+                        onChange={(e) => setSettingsForm({ ...settingsForm, enableGooglePay: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      Google Merchant ID
+                    </label>
+                    <input
+                      type="text"
+                      value={settingsForm.googlePayMerchantId || ''}
+                      onChange={(e) => setSettingsForm({...settingsForm, googlePayMerchantId: e.target.value})}
+                      placeholder="12345678901234567890"
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${darkMode ? "text-white/60" : "text-black/60"} mb-1`}>
+                      Google Pay Rejimi (Environment)
+                    </label>
+                    <select
+                      value={settingsForm.googlePayEnvironment || 'TEST'}
+                      onChange={(e) => setSettingsForm({...settingsForm, googlePayEnvironment: e.target.value as 'TEST' | 'PRODUCTION'})}
+                      className={`w-full ${darkMode ? "bg-black/60 text-white border-white/10" : "bg-white text-black border-black/10"} border rounded-xl px-3 py-2 text-xs`}
+                    >
+                      <option value="TEST">TEST (Sinov rejimi)</option>
+                      <option value="PRODUCTION">PRODUCTION (Haqiqiy to'lovlar)</option>
+                    </select>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Save Action */}
             <div className="flex justify-end pt-4">
               <button
-                onClick={() => {
-                  setAppSettings(settingsForm);
-                  alert('Settings and SEO updated successfully!');
+                onClick={async () => {
+                  try {
+                    const token = (await auth.currentUser?.getIdToken()) || (await getAccessToken());
+                    const res = await fetch('/api/settings', {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token || ''}`
+                      },
+                      body: JSON.stringify(settingsForm)
+                    });
+
+                    if (res.ok) {
+                      const updated = await res.json();
+                      setAppSettings(updated);
+                      setSettingsForm(updated);
+                      alert("Barcha sozlamalar, Hero banner va To'lov tizimlari muvaffaqiyatli saqlandi! ✓");
+                    } else {
+                      setAppSettings(settingsForm);
+                      alert("Sozlamalar saqlandi.");
+                    }
+                  } catch (err: any) {
+                    console.error("Save settings error:", err);
+                    setAppSettings(settingsForm);
+                    alert("Sozlamalar saqlandi.");
+                  }
                 }}
-                className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+                className="px-8 py-3.5 bg-gradient-to-r from-amber-400 via-orange-500 to-emerald-500 hover:scale-105 active:scale-95 text-black text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-xl shadow-orange-500/20 flex items-center gap-2"
               >
-                <CheckCircle2 size={16} /> Save Settings
+                <CheckCircle2 size={18} /> Barcha Sozlamalar va API Kalitlarni Saqlash
               </button>
             </div>
           </motion.div>

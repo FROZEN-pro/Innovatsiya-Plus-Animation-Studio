@@ -316,7 +316,7 @@ export default function Navbar() {
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-red-500/10 hover:bg-red-500/20 text-red-500 text-xs font-bold transition-all"
                   >
                     <LogOut size={14} />
-                    Sign Out
+                    {t('signOut')}
                   </button>
                 </div>
               </div>

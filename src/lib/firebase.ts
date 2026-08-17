@@ -27,23 +27,40 @@ googleProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/spreadsheets');
 googleProvider.addScope('https://www.googleapis.com/auth/spreadsheets.readonly');
 
-let cachedAccessToken: string | null = null;
+let cachedOAuthAccessToken: string | null = null;
 
-export const getAccessToken = () => cachedAccessToken;
+export const getGoogleOAuthAccessToken = () => cachedOAuthAccessToken;
+
+export const getFirebaseIdToken = async (forceRefresh = false): Promise<string | null> => {
+  if (auth.currentUser) {
+    try {
+      return await auth.currentUser.getIdToken(forceRefresh);
+    } catch (e) {
+      console.warn("Could not retrieve Firebase ID token:", e);
+    }
+  }
+  return null;
+};
+
+export const getAccessToken = async (): Promise<string | null> => {
+  const idToken = await getFirebaseIdToken();
+  if (idToken) return idToken;
+  return cachedOAuthAccessToken;
+};
 
 export const loginWithGoogle = async () => {
   const result = await signInWithPopup(auth, googleProvider);
   
   const credential = GoogleAuthProvider.credentialFromResult(result);
   if (credential?.accessToken) {
-    cachedAccessToken = credential.accessToken;
+    cachedOAuthAccessToken = credential.accessToken;
   }
   
   return result.user;
 };
 
 export const logout = () => {
-  cachedAccessToken = null;
+  cachedOAuthAccessToken = null;
   return signOut(auth);
 };
 

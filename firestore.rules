@@ -252,6 +252,19 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Real-time Support Chat between User & Admin
+    match /support_chats/{chatId} {
+      allow read: if request.auth != null && (request.auth.uid == chatId || isAdmin());
+      allow create, update: if request.auth != null && (request.auth.uid == chatId || isAdmin());
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if request.auth != null && (request.auth.uid == chatId || isAdmin());
+        allow create: if request.auth != null && (request.auth.uid == chatId || isAdmin());
+        allow update, delete: if isAdmin();
+      }
+    }
+
     match /{path=**}/likes/{videoId} {
       allow read: if request.auth != null;
     }

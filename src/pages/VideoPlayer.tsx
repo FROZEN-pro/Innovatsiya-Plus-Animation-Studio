@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Video } from '../types';
 import { saveOfflineData, getOfflineData } from '../lib/encryption';
 import { useAppStore } from '../store/useStore';
-import { languages } from '../lib/i18n';
+import { languages, getTranslation, formatCategoryLabel, formatViewsCount, formatTimeAgo } from '../lib/i18n';
 import ThemeToggle from '../components/ThemeToggle';
 import LivePremiereRoom from '../components/LivePremiereRoom';
 import CustomVideoPlayer from '../components/CustomVideoPlayer';
@@ -20,6 +20,7 @@ export default function VideoPlayer() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { offlineVault, addToVault, language, darkMode, openFloatingPlayer, appSettings } = useAppStore();
+  const t = (key: string) => getTranslation(language, key);
   
   const [video, setVideo] = useState<Video | null>(null);
   const [isSavedOffline, setIsSavedOffline] = useState(false);
@@ -591,7 +592,7 @@ export default function VideoPlayer() {
           onClick={() => navigate('/dashboard')} 
           className={`flex items-center gap-2 ${darkMode ? "text-white/70 hover:text-orange-400" : "text-zinc-600 hover:text-orange-500"} font-bold text-xs uppercase tracking-wider transition-all`}
         >
-          <ArrowLeft size={18} /> Back to Dashboard
+          <ArrowLeft size={18} /> {t('navHome')}
         </button>
         <div className="flex items-center gap-3">
           <span className="text-[10px] text-emerald-500 font-mono font-bold uppercase border border-emerald-500/30 px-3 py-1 rounded-full flex items-center gap-1.5 bg-emerald-500/10">
@@ -647,12 +648,12 @@ export default function VideoPlayer() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <span className="px-2.5 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/30 text-orange-500 text-[10px] font-extrabold uppercase">
-                  {video.category}
+                  {formatCategoryLabel(video.category, language)}
                 </span>
                 <h1 className={`text-2xl sm:text-3xl font-extrabold ${darkMode ? "text-white" : "text-zinc-900"} mt-2 leading-tight`}>
                   {video.title}
                 </h1>
-                <p className={`text-xs ${darkMode ? "text-white/50" : "text-zinc-500"} mt-1 font-mono`}>{video.views} Members Streaming</p>
+                <p className={`text-xs ${darkMode ? "text-white/50" : "text-zinc-500"} mt-1 font-mono`}>{formatViewsCount(video.views, language)}</p>
               </div>
 
               {/* Action Buttons (Favorite, Like, Offline, Share) */}
@@ -666,10 +667,10 @@ export default function VideoPlayer() {
                       ? 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-lg shadow-amber-500/10'
                       : darkMode ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100 shadow-sm'
                   }`}
-                  title={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+                  title={isFavorite ? t('removedFromFavorites') : t('savedToFavorites')}
                 >
                   <Bookmark size={16} fill={isFavorite ? "currentColor" : "none"} className={isFavorite ? "text-amber-400" : ""} />
-                  <span className="hidden sm:inline">{isFavorite ? 'Saved' : 'Favorite'}</span>
+                  <span className="hidden sm:inline">{isFavorite ? t('navFavorites') : t('like')}</span>
                 </button>
 
                 {/* Like Button */}
@@ -680,7 +681,7 @@ export default function VideoPlayer() {
                       ? 'bg-rose-500/20 border-rose-500 text-rose-500'
                       : darkMode ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100 shadow-sm'
                   }`}
-                  title="Like this video"
+                  title={t('like')}
                 >
                   <Heart size={16} fill={isLiked ? "currentColor" : "none"} />
                   <span className="hidden sm:inline">{likeCount}</span>
@@ -695,10 +696,10 @@ export default function VideoPlayer() {
                       ? 'bg-emerald-500/20 border-emerald-500 text-emerald-500'
                       : darkMode ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100 shadow-sm'
                   }`}
-                  title="Save Encrypted Stream for Offline Playback"
+                  title={t('downloadOffline')}
                 >
                   {isSavedOffline ? <Check size={16} /> : <Download size={16} />}
-                  <span className="hidden sm:inline">{isSavedOffline ? 'In Vault' : 'Offline'}</span>
+                  <span className="hidden sm:inline">{isSavedOffline ? t('downloaded') : t('downloadOffline')}</span>
                 </button>
 
                 {/* Share Action */}
@@ -707,10 +708,10 @@ export default function VideoPlayer() {
                   className={`p-2.5 rounded-2xl border transition-all flex items-center gap-1.5 text-xs font-bold ${
                     darkMode ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100 shadow-sm'
                   }`}
-                  title="Share Video"
+                  title={t('share')}
                 >
                   {showShareToast ? <Check size={16} className="text-emerald-500" /> : <Share2 size={16} />}
-                  <span className="hidden sm:inline">{showShareToast ? 'Copied' : 'Share'}</span>
+                  <span className="hidden sm:inline">{showShareToast ? t('copiedLink') : t('share')}</span>
                 </button>
 
               </div>
@@ -728,7 +729,7 @@ export default function VideoPlayer() {
             <div className={`${darkMode ? "bg-white/5 border-white/10" : "bg-zinc-50 border-zinc-200"} border rounded-3xl p-5 sm:p-8 space-y-6 mt-4`}>
               <div className="flex items-center gap-2">
                 <MessageSquare className="text-orange-500" size={20} />
-                <h3 className={`text-lg font-bold ${darkMode ? "text-white" : "text-zinc-900"} tracking-tight`}>Community Discussion</h3>
+                <h3 className={`text-lg font-bold ${darkMode ? "text-white" : "text-zinc-900"} tracking-tight`}>{t('comments')}</h3>
               </div>
               
               {/* Comment Input */}
@@ -740,7 +741,7 @@ export default function VideoPlayer() {
                       type="text"
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Add a public comment..."
+                      placeholder={t('addComment')}
                       className={`w-full ${darkMode ? "bg-black/40 border-white/10 text-white placeholder-white/40" : "bg-white border-zinc-200 text-zinc-900 placeholder-zinc-400"} border rounded-2xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-orange-500 transition-colors shadow-inner`}
                       disabled={isSubmittingComment}
                     />
@@ -762,7 +763,7 @@ export default function VideoPlayer() {
               {/* Comments List */}
               <div className={`space-y-4 pt-4 border-t ${darkMode ? "border-white/10" : "border-zinc-200"}`}>
                 {comments.length === 0 ? (
-                  <p className={`text-center text-xs ${darkMode ? "text-white/40" : "text-zinc-400"} py-4`}>No comments yet. Be the first to share your thoughts!</p>
+                  <p className={`text-center text-xs ${darkMode ? "text-white/40" : "text-zinc-400"} py-4`}>{t('noComments')}</p>
                 ) : (
                   comments.map(comment => (
                     <div key={comment.id} className="flex gap-4 group">
@@ -771,7 +772,7 @@ export default function VideoPlayer() {
                         <div className="flex items-center justify-between gap-2 mb-1">
                           <span className={`font-bold ${darkMode ? "text-white/90" : "text-zinc-900"} text-xs`}>{comment.userDisplayName}</span>
                           <span className={`text-[10px] ${darkMode ? "text-white/40" : "text-zinc-400"} font-mono`}>
-                            {comment.createdAt?.toDate ? comment.createdAt.toDate().toLocaleDateString() : 'Just now'}
+                            {comment.createdAt?.toDate ? formatTimeAgo(comment.createdAt.toDate(), language) : formatTimeAgo(Date.now(), language)}
                           </span>
                         </div>
                         <p className={`${darkMode ? "text-white/70" : "text-zinc-700"} leading-relaxed text-xs`}>{comment.text}</p>
@@ -807,9 +808,9 @@ export default function VideoPlayer() {
         >
           <div className={`flex items-center justify-between pb-2 border-b ${darkMode ? "border-white/10" : "border-zinc-200"}`}>
             <h3 className={`font-extrabold text-sm ${darkMode ? "text-white" : "text-zinc-900"} flex items-center gap-2`}>
-              <Sparkles size={16} className="text-amber-500" /> Related VIP Streams
+              <Sparkles size={16} className="text-amber-500" /> {t('similarVideos')}
             </h3>
-            <span className={`text-[10px] ${darkMode ? "text-white/40" : "text-zinc-500"} font-mono`}>AI Curated</span>
+            <span className={`text-[10px] ${darkMode ? "text-white/40" : "text-zinc-500"} font-mono`}>HD Stream</span>
           </div>
 
           <div className="space-y-3">
@@ -827,7 +828,7 @@ export default function VideoPlayer() {
                 <img src={item.thumbnailUrl} alt={item.title} className="w-24 h-16 rounded-xl object-cover shrink-0 group-hover:scale-105 transition-transform" />
                 <div className="overflow-hidden space-y-1">
                   <span className="text-[9px] font-mono text-orange-500 bg-orange-500/10 px-1.5 py-0.5 rounded uppercase">
-                    {item.category}
+                    {formatCategoryLabel(item.category, language)}
                   </span>
                   <h4 className={`text-xs font-bold ${darkMode ? "text-white" : "text-zinc-900"} truncate group-hover:text-orange-500 transition-colors`}>
                     {item.title}

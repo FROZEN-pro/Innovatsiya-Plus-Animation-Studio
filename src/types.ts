@@ -127,10 +127,19 @@ export interface FloatingPlayerState {
 export interface AppSettings {
   brandName?: string;
   brandTag?: string;
+  showHeroBanner?: boolean;
   heroTitle?: string;
   heroSubtitle?: string;
   heroImageUrl?: string;
   footerText?: string;
+  footerAbout?: string;
+  supportEmail?: string;
+  supportPhone?: string;
+  socialTelegram?: string;
+  socialYoutube?: string;
+  socialInstagram?: string;
+  socialTwitter?: string;
+  socialGithub?: string;
   dashboardLayout?: DashboardLayoutTheme;
   seoTitle?: string;
   seoDescription?: string;
@@ -138,6 +147,67 @@ export interface AppSettings {
   ambientGlowDefault?: boolean;
   emptyVaultDesc?: string;
   noMediaDesc?: string;
+  
+  // VIP Subscription & Pricing Settings (Admin Managed)
+  enableClick?: boolean;
+  enablePayme?: boolean;
+  enableGooglePay?: boolean;
+  proPlanTitle?: string;
+  proPlanPriceUzs?: string;
+  proPlanPriceNum?: number;
+  proPlanFeature1?: string;
+  proPlanFeature2?: string;
+  vipPlanTitle?: string;
+  vipPlanPriceUzs?: string;
+  vipPlanPriceNum?: number;
+  vipPlanFeature1?: string;
+  vipPlanFeature2?: string;
+  vipYearlyTitle?: string;
+  vipYearlyPriceUzs?: string;
+  vipYearlyPriceNum?: number;
+  vipYearlyDiscountBadge?: string;
+  vipYearlyFeature1?: string;
+  vipYearlyFeature2?: string;
+  vipCurrency?: string;
+  
+  // Payment Integration Settings
+  clickMerchantId?: string;
+  clickServiceId?: string;
+  clickSecretKey?: string;
+  hasClickSecret?: boolean;
+  paymeMerchantId?: string;
+  paymeSecretKey?: string;
+  hasPaymeSecret?: boolean;
+  googlePayMerchantId?: string;
+  googlePayGateway?: string;
+  googlePayEnvironment?: 'TEST' | 'PRODUCTION';
+}
+
+export interface SupportMessage {
+  id: string;
+  chatId: string;
+  senderId: string;
+  senderName: string;
+  senderPhotoURL?: string | null;
+  senderRole: 'user' | 'admin';
+  text: string;
+  imageUrl?: string;
+  createdAt: number;
+  read?: boolean;
+}
+
+export interface SupportChat {
+  id: string; // usually user.uid
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userPhotoURL?: string | null;
+  lastMessageText: string;
+  lastMessageTime: number;
+  lastSenderRole: 'user' | 'admin';
+  status: 'open' | 'closed';
+  unreadAdminCount: number;
+  unreadUserCount: number;
 }
 
 export interface OfflineVaultItem {
@@ -182,6 +252,50 @@ export interface AppNotification {
   category?: string;
   author?: string;
   createdAt: number;
+}
+
+export type AdminActionCategory = 'all' | 'content' | 'subscription' | 'settings' | 'users' | 'broadcast';
+
+export interface AdminActivityLog {
+  id: string;
+  timestamp: number;
+  adminEmail: string;
+  adminUid: string;
+  adminName?: string;
+  actionType: 
+    | 'CONTENT_CREATED' 
+    | 'CONTENT_UPDATED' 
+    | 'CONTENT_DELETED' 
+    | 'CONTENT_BULK_UPDATED' 
+    | 'CONTENT_BULK_DELETED' 
+    | 'SUBSCRIPTION_PLAN_CHANGED' 
+    | 'PAYMENT_GATEWAY_CHANGED' 
+    | 'SETTINGS_UPDATED' 
+    | 'USER_ROLE_CHANGED' 
+    | 'USER_SUBSCRIPTION_CHANGED' 
+    | 'USER_BANNED' 
+    | 'BROADCAST_SENT' 
+    | string;
+  category: 'content' | 'subscription' | 'settings' | 'users' | 'broadcast';
+  summary: string;
+  details?: string;
+  targetId?: string;
+  targetName?: string;
+  changes?: Record<string, { from?: any; to?: any }>;
+  severity?: 'info' | 'warning' | 'critical' | 'success';
+}
+
+export interface SubscriptionEventRecord {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userDisplayName?: string;
+  planTier: SubscriptionTier;
+  planTitle: string;
+  amountUzs: number;
+  paymentProvider: 'click' | 'payme' | 'gpay' | 'card' | 'admin_grant';
+  status: 'active' | 'renewed' | 'cancelled' | 'expired';
+  timestamp: number;
 }
 
 export interface AuthState {

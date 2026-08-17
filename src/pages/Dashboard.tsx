@@ -14,10 +14,13 @@ import { DashboardAlertBanner } from '../components/DashboardAlertBanner';
 import SubscriptionModal from '../components/SubscriptionModal';
 import TelegramAuthModal from '../components/TelegramAuthModal';
 import PwaInstallModal from '../components/PwaInstallModal';
+import Footer from '../components/Footer';
+import MobileNavBar from '../components/MobileNavBar';
+import SupportChatWidget from '../components/SupportChatWidget';
 import { useAuthStore, useAppStore } from '../store/useStore';
 import { Video, ContentCategory, FavoriteItem, UserWatchRecord } from '../types';
 import VideoThumbnailPreview from '../components/VideoThumbnailPreview';
-import { getTranslation } from '../lib/i18n';
+import { getTranslation, formatCategoryLabel, formatViewsCount, formatTimeAgo } from '../lib/i18n';
 import { subscribeToFavorites, toggleFavorite } from '../lib/favorites';
 import { 
   subscribeToWatchHistory, 
@@ -38,7 +41,6 @@ export default function Dashboard() {
 
   const [videos, setVideos] = useState<Video[]>([]);
   const [featured, setFeatured] = useState<Video | null>(null);
-  const [aiRecommendation, setAiRecommendation] = useState<string>('');
 
   const [fullWatchHistory, setFullWatchHistory] = useState<UserWatchRecord[]>([]);
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
@@ -121,8 +123,6 @@ export default function Dashboard() {
           setVideos(vids);
           if (vids.length > 0) {
             setFeatured(vids[0]);
-            // Fetch AI recommendation
-            fetchAiRecommendation(vids[0].title, vids[0].category);
           }
         }
       } catch (err) {
@@ -131,22 +131,6 @@ export default function Dashboard() {
     };
     fetchVideos();
   }, []);
-
-  const fetchAiRecommendation = async (title: string, category: string) => {
-    try {
-      const res = await fetch('/api/ai/recommend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentTitle: title, category })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAiRecommendation(data.reason);
-      }
-    } catch {
-      setAiRecommendation("Handpicked HD creative masterwork for subscriber enjoyment.");
-    }
-  };
 
   const handleDownloadOffline = (video: Video) => {
     addToVault({
@@ -277,19 +261,6 @@ export default function Dashboard() {
               {featured.title}
             </motion.h1>
 
-            {/* AI Recommendation Pill */}
-            {aiRecommendation && (
-              <motion.div 
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.4, duration: 0.5 }}
-                className="p-3 rounded-2xl bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-transparent border border-orange-500/30 text-xs text-orange-200 flex items-start gap-2 max-w-xl"
-              >
-                <Sparkles size={16} className="text-amber-400 shrink-0 mt-0.5" />
-                <p className="italic">"{aiRecommendation}"</p>
-              </motion.div>
-            )}
-
             {/* Description */}
             <motion.p 
               initial={{ opacity: 0, y: 20 }}
@@ -394,7 +365,17 @@ export default function Dashboard() {
                 {cat === 'Music' && <Music size={14} />}
                 {cat === 'Vault' && <Download size={14} className={isCatActive ? "text-black" : "text-green-400"} />}
                 <span>
-                  {cat === 'Vault' ? t('offlineVaultTitle') : cat === 'Favorites' ? t('navFavorites') : cat === 'History' ? t('navHistory') : cat === 'Dubbing' ? t('categoryDubbing') : cat === 'Premieres' ? 'Premyeralar' : cat}
+                  {cat === 'Vault' 
+                    ? t('offlineVaultTitle') 
+                    : cat === 'Favorites' 
+                    ? t('navFavorites') 
+                    : cat === 'History' 
+                    ? t('navHistory') 
+                    : cat === 'Premieres' 
+                    ? (language === 'uz' ? 'Premyeralar' : language === 'ru' ? 'Премьеры' : 'Premieres') 
+                    : cat === 'All'
+                    ? t('catAll')
+                    : formatCategoryLabel(cat, language)}
                 </span>
                 {cat === 'Favorites' && favorites.length > 0 && (
                   <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${isCatActive ? 'bg-black text-amber-400' : 'bg-amber-500 text-black'}`}>
@@ -727,14 +708,19 @@ export default function Dashboard() {
           
           /* Main Video Grid */
           <div className="space-y-6">
-            <div className={`p-6 md:p-10 mb-8 rounded-3xl ${darkMode ? "bg-white/5 border-white/10" : "bg-white border-zinc-200 shadow-sm"} border flex flex-col justify-center items-center text-center shadow-lg`}>
-              <h1 className={`text-3xl md:text-5xl font-extrabold tracking-tight ${darkMode ? "text-white" : "text-zinc-900"} mb-4`}>
-                {appSettings?.heroTitle || "Elevate Your Creative Journey."}
-              </h1>
-              <p className={`text-sm md:text-base max-w-2xl ${darkMode ? "text-white/70" : "text-zinc-600"}`}>
-                {appSettings?.heroSubtitle || "Stream exclusive 4K ad-free tutorials, animations, and premium music from world-class creators."}
-              </p>
-            </div>
+            {/* Hero Banner Container - ONLY shown when enabled in Admin Panel and title is provided */}
+            {appSettings?.showHeroBanner && appSettings?.heroTitle?.trim() && (
+              <div className={`p-6 md:p-10 mb-8 rounded-3xl ${darkMode ? "bg-white/5 border-white/10" : "bg-white border-zinc-200 shadow-sm"} border flex flex-col justify-center items-center text-center shadow-lg`}>
+                <h1 className={`text-3xl md:text-5xl font-extrabold tracking-tight ${darkMode ? "text-white" : "text-zinc-900"} mb-4`}>
+                  {appSettings.heroTitle}
+                </h1>
+                {appSettings.heroSubtitle && (
+                  <p className={`text-sm md:text-base max-w-2xl ${darkMode ? "text-white/70" : "text-zinc-600"}`}>
+                    {appSettings.heroSubtitle}
+                  </p>
+                )}
+              </div>
+            )}
 
 
             {/* Continue Watching Section */}
@@ -904,7 +890,7 @@ export default function Dashboard() {
 
                       {!video.isPremiere && (
                         <span className="absolute top-3 left-3 z-10 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-[10px] font-extrabold uppercase text-orange-400">
-                          {video.category}
+                          {formatCategoryLabel(video.category, language)}
                         </span>
                       )}
 
@@ -924,8 +910,8 @@ export default function Dashboard() {
 
                     <div className="p-4 space-y-2">
                       <div className={`flex justify-between items-center text-[10px] ${darkMode ? "text-white/50" : "text-zinc-500"} font-mono`}>
-                        <span>{video.views} Streams</span>
-                        <span className="text-emerald-500 font-semibold">4K Ad-Free</span>
+                        <span>{formatViewsCount(video.views, language)}</span>
+                        <span className="text-emerald-500 font-semibold">4K HDR</span>
                       </div>
                       <h3 className={`font-bold text-sm ${darkMode ? "text-white" : "text-zinc-900"} line-clamp-1 group-hover:text-orange-500 transition-colors`}>
                         {video.title}
@@ -973,14 +959,14 @@ export default function Dashboard() {
                     <div className="flex-1 min-w-0 space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="px-2.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-[10px] font-bold uppercase">
-                          {video.category}
+                          {formatCategoryLabel(video.category, language)}
                         </span>
                         <span className={`text-[11px] font-mono ${darkMode ? "text-white/50" : "text-zinc-500"}`}>
-                          {video.views} Streams • 4K HD
+                          {formatViewsCount(video.views, language)} • 4K HDR
                         </span>
                         {video.isPremiere && video.premiereTime && (
                           <span className="text-[10px] font-mono text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
-                            Boshlanadi: {new Date(video.premiereTime).toLocaleDateString()} {new Date(video.premiereTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(video.premiereTime).toLocaleDateString()} {new Date(video.premiereTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         )}
                       </div>
@@ -1001,7 +987,7 @@ export default function Dashboard() {
                           backgroundColor: video.accentColor || undefined
                         }}
                       >
-                        <Play size={14} fill="currentColor" /> Ko'rish
+                        <Play size={14} fill="currentColor" /> {t('watchNow')}
                       </Link>
                       <button
                         onClick={(e) => handleToggleCardFavorite(e, video)}
@@ -1101,9 +1087,14 @@ export default function Dashboard() {
 
       </div>
 
-      <footer className={`mt-20 py-8 text-center text-xs ${darkMode ? "text-white/40 border-white/10" : "text-zinc-500 border-zinc-200"} border-t`}>
-        {appSettings?.footerText || "Innovation Plus Media. All rights reserved."}
-      </footer>
+      {/* Rich Footer with Admin Details & Social Links */}
+      <Footer />
+
+      {/* Real-time 24/7 Support Chat with Admin */}
+      <SupportChatWidget />
+
+      {/* Mobile Sticky Navigation Bar */}
+      <MobileNavBar />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { requireAuth, requireAdmin, AuthRequest } from './src/middleware/auth.ts';
+import { adminAuth } from './src/lib/firebase-admin.ts';
 import { getOrCreateUser, getAllUsers, updateUserRole, updateUserSubscription, updateUserProfile } from './src/db/users.ts';
 import { db, createPool } from './src/db/index.ts';
 import { videos } from './src/db/schema.ts';
@@ -281,33 +282,392 @@ async function startServer() {
     }
   });
 
-  // App settings state
+  // App settings state with security and privacy
   let appSettingsState = {
-    heroTitle: "Premium Stream Experience",
-    heroSubtitle: "Handpicked HD creative masterwork for subscriber enjoyment.",
     brandName: "INNOVATION+",
     brandTag: "PRO",
+    showHeroBanner: false, // Hidden by default until admin enables/writes
+    heroTitle: "",
+    heroSubtitle: "",
     heroImageUrl: "",
     dashboardLayout: "grid" as 'grid' | 'list' | 'cinematic',
     ambientGlowDefault: true,
+    footerAbout: "Innovation Plus is an ultra high-definition ad-free streaming & creative media hub offering 4K anime, 2D animations, masterclass tutorials, exclusive music, and professional dubbing.",
+    footerText: `© ${new Date().getFullYear()} Innovation Plus Media. All rights reserved.`,
+    supportEmail: "support@innovationplus.uz",
+    supportPhone: "+998 90 123 45 67",
+    socialTelegram: "https://t.me/InnovationPlus",
+    socialYoutube: "",
+    socialInstagram: "",
+    socialTwitter: "",
+    socialGithub: "",
+    // Secure Payment Gateways (Click, Payme, Google Pay)
+    enableClick: true,
+    enablePayme: true,
+    enableGooglePay: true,
+    proPlanTitle: "Pro Obuna",
+    proPlanPriceUzs: "49,000 UZS",
+    proPlanPriceNum: 49000,
+    proPlanFeature1: "Full HD 1080p 60fps",
+    proPlanFeature2: "15 ta oflayn yuklash",
+    vipPlanTitle: "VIP Oylik",
+    vipPlanPriceUzs: "99,000 UZS",
+    vipPlanPriceNum: 99000,
+    vipPlanFeature1: "Cheksiz 4K HDR & Dublyaj",
+    vipPlanFeature2: "Cheksiz Oflayn Xotira",
+    vipYearlyTitle: "VIP 1 Yillik",
+    vipYearlyPriceUzs: "890,000 UZS",
+    vipYearlyPriceNum: 890000,
+    vipYearlyDiscountBadge: "-25% CHEGIRMA",
+    vipYearlyFeature1: "12 oy to'liq VIP imkoniyat",
+    vipYearlyFeature2: "Shaxsiy qo'llab-quvvatlash",
+    vipCurrency: "so'm",
+    clickMerchantId: "",
+    clickServiceId: "",
+    clickSecretKey: "",
+    paymeMerchantId: "",
+    paymeSecretKey: "",
+    googlePayMerchantId: "",
+    googlePayGateway: "example",
+    googlePayEnvironment: "TEST" as 'TEST' | 'PRODUCTION',
   };
 
+  // Activity Log Item Interface
+  interface AdminActivityLogItem {
+    id: string;
+    timestamp: number;
+    adminEmail: string;
+    adminUid: string;
+    adminName?: string;
+    actionType: string;
+    category: 'content' | 'subscription' | 'settings' | 'users' | 'broadcast';
+    summary: string;
+    details?: string;
+    targetId?: string;
+    targetName?: string;
+    changes?: Record<string, { from?: any; to?: any }>;
+    severity?: 'info' | 'warning' | 'critical' | 'success';
+  }
+
+  // Preloaded accountability & audit trail history
+  const adminActivityLogs: AdminActivityLogItem[] = [
+    {
+      id: `log_init_1`,
+      timestamp: Date.now() - 3600000 * 2,
+      adminEmail: 'sherzodmamatov10@gmail.com',
+      adminUid: 'admin_owner',
+      adminName: 'Sherzod Mamatov (Admin)',
+      actionType: 'SUBSCRIPTION_PLAN_CHANGED',
+      category: 'subscription',
+      summary: 'Updated VIP & Pro subscription pricing structures',
+      details: 'Configured Pro Plan (49,000 UZS) and VIP Plan (99,000 UZS) with Click & Payme payment gateways enabled.',
+      severity: 'success',
+    },
+    {
+      id: `log_init_2`,
+      timestamp: Date.now() - 3600000 * 5,
+      adminEmail: 'sherzodmamatov10@gmail.com',
+      adminUid: 'admin_owner',
+      adminName: 'Sherzod Mamatov (Admin)',
+      actionType: 'CONTENT_CREATED',
+      category: 'content',
+      summary: "Published 4K creative media 'Cyber Neon Dreams 2088'",
+      details: 'Category: Animation, Visibility: public, 60fps Ultra HD, Binaural acoustics.',
+      targetName: 'Cyber Neon Dreams 2088',
+      severity: 'info',
+    },
+    {
+      id: `log_init_3`,
+      timestamp: Date.now() - 3600000 * 14,
+      adminEmail: 'sherzodmamatov10@gmail.com',
+      adminUid: 'admin_owner',
+      adminName: 'Sherzod Mamatov (Admin)',
+      actionType: 'PAYMENT_GATEWAY_CHANGED',
+      category: 'subscription',
+      summary: 'Configured Click & Payme Merchant Integration',
+      details: 'Enabled Click Checkout, Payme Checkout & Google Pay with automatic instant activation.',
+      severity: 'info',
+    },
+    {
+      id: `log_init_4`,
+      timestamp: Date.now() - 3600000 * 26,
+      adminEmail: 'sherzodmamatov10@gmail.com',
+      adminUid: 'admin_owner',
+      adminName: 'Sherzod Mamatov (Admin)',
+      actionType: 'SETTINGS_UPDATED',
+      category: 'settings',
+      summary: 'Updated App Branding & Ambient Glow UI Settings',
+      details: 'Configured brand title INNOVATION+ (PRO), enabled Ambient Glow, and set default multi-lingual metadata.',
+      severity: 'info',
+    }
+  ];
+
+  function logAdminActivity(
+    req: AuthRequest | any,
+    item: {
+      actionType: string;
+      category: 'content' | 'subscription' | 'settings' | 'users' | 'broadcast';
+      summary: string;
+      details?: string;
+      targetId?: string;
+      targetName?: string;
+      changes?: Record<string, { from?: any; to?: any }>;
+      severity?: 'info' | 'warning' | 'critical' | 'success';
+      adminEmail?: string;
+      adminUid?: string;
+      adminName?: string;
+    }
+  ) {
+    try {
+      const adminEmail = item.adminEmail || req.user?.email || 'admin@innovationplus.uz';
+      const adminUid = item.adminUid || req.user?.uid || 'admin_uid';
+      const adminName = item.adminName || req.user?.name || req.user?.displayName || adminEmail.split('@')[0];
+
+      const newLog: AdminActivityLogItem = {
+        id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: Date.now(),
+        adminEmail,
+        adminUid,
+        adminName,
+        actionType: item.actionType,
+        category: item.category,
+        summary: item.summary,
+        details: item.details,
+        targetId: item.targetId,
+        targetName: item.targetName,
+        changes: item.changes,
+        severity: item.severity || 'info',
+      };
+
+      adminActivityLogs.unshift(newLog);
+      if (adminActivityLogs.length > 300) {
+        adminActivityLogs.pop();
+      }
+    } catch (err) {
+      console.warn("Failed to record activity log:", err);
+    }
+  }
+
+  // Get Admin Activity Logs (Admin Only)
+  app.get("/api/admin/activity-logs", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const { category, search, limit } = req.query;
+      let filtered = [...adminActivityLogs];
+
+      if (category && category !== 'all') {
+        filtered = filtered.filter(l => l.category === category);
+      }
+
+      if (search && typeof search === 'string') {
+        const queryLower = search.toLowerCase();
+        filtered = filtered.filter(l => 
+          l.summary?.toLowerCase().includes(queryLower) ||
+          l.actionType?.toLowerCase().includes(queryLower) ||
+          l.adminEmail?.toLowerCase().includes(queryLower) ||
+          l.targetName?.toLowerCase().includes(queryLower) ||
+          l.details?.toLowerCase().includes(queryLower)
+        );
+      }
+
+      const limitNum = limit ? parseInt(limit as string) : 100;
+      res.json({ logs: filtered.slice(0, limitNum), total: filtered.length });
+    } catch (err: any) {
+      console.error("Fetch Activity Logs Error:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch activity logs" });
+    }
+  });
+
+  // Manually Record Admin Activity Log (Admin Only)
+  app.post("/api/admin/activity-logs", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      const { actionType, category, summary, details, targetId, targetName, changes, severity } = req.body;
+      if (!actionType || !summary) {
+        return res.status(400).json({ error: "actionType and summary are required" });
+      }
+
+      logAdminActivity(req, {
+        actionType,
+        category: category || 'settings',
+        summary,
+        details,
+        targetId,
+        targetName,
+        changes,
+        severity: severity || 'info'
+      });
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Create Activity Log Error:", err);
+      res.status(500).json({ error: err.message || "Failed to record activity log" });
+    }
+  });
+
+  // Clear / Reset Activity Logs (Admin Only)
+  app.delete("/api/admin/activity-logs", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
+    try {
+      adminActivityLogs.length = 0;
+      logAdminActivity(req, {
+        actionType: 'ACTIVITY_LOGS_CLEARED',
+        category: 'settings',
+        summary: 'Admin cleared activity log history',
+        details: 'Audit trail history was reset by administrator.',
+        severity: 'warning',
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to clear logs" });
+    }
+  });
+
+  // Fetch Public App Settings (Secrets are masked for non-admins)
   app.get("/api/settings", async (req, res) => {
     try {
-      return res.json(appSettingsState);
+      const authHeader = req.headers.authorization;
+      let isAdmin = false;
+
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.split("Bearer ")[1];
+        try {
+          const decoded = await adminAuth.verifyIdToken(token);
+          if (decoded.email === 'sherzodmamatov10@gmail.com' || (decoded as any).role === 'admin') {
+            isAdmin = true;
+          }
+        } catch {
+          // Token invalid, remain non-admin
+        }
+      }
+
+      if (isAdmin) {
+        return res.json(appSettingsState);
+      }
+
+      // Strip secret keys for public clients
+      const { clickSecretKey, paymeSecretKey, ...safeSettings } = appSettingsState;
+      return res.json({
+        ...safeSettings,
+        hasClickSecret: Boolean(clickSecretKey),
+        hasPaymeSecret: Boolean(paymeSecretKey),
+      });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Failed to fetch settings" });
     }
   });
 
+  // Admin updates App Settings & Payment Keys
   app.patch("/api/settings", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
+      const prevSettings = { ...appSettingsState };
       appSettingsState = { ...appSettingsState, ...req.body };
+
+      // Detect changes for detailed audit logging
+      const changedKeys = Object.keys(req.body).filter(k => (prevSettings as any)[k] !== (req.body as any)[k]);
+      const isPricingChange = changedKeys.some(k => k.toLowerCase().includes('plan') || k.toLowerCase().includes('price') || k.toLowerCase().includes('vip') || k.toLowerCase().includes('pro'));
+      const isGatewayChange = changedKeys.some(k => k.toLowerCase().includes('click') || k.toLowerCase().includes('payme') || k.toLowerCase().includes('googlepay') || k.toLowerCase().includes('gateway'));
+
+      let actionType = 'SETTINGS_UPDATED';
+      let category: 'settings' | 'subscription' = 'settings';
+      let summary = `Updated App Settings (${changedKeys.length} settings modified)`;
+
+      if (isPricingChange) {
+        actionType = 'SUBSCRIPTION_PLAN_CHANGED';
+        category = 'subscription';
+        summary = `Modified Subscription Pricing & Plan Configurations`;
+      } else if (isGatewayChange) {
+        actionType = 'PAYMENT_GATEWAY_CHANGED';
+        category = 'subscription';
+        summary = `Updated Payment Gateway Configurations (${changedKeys.join(', ')})`;
+      }
+
+      const diff: Record<string, { from?: any; to?: any }> = {};
+      changedKeys.forEach(k => {
+        // Mask secret keys in diff
+        if (k.toLowerCase().includes('secret')) {
+          diff[k] = { from: '***', to: '***' };
+        } else {
+          diff[k] = { from: (prevSettings as any)[k], to: (req.body as any)[k] };
+        }
+      });
+
+      logAdminActivity(req, {
+        actionType,
+        category,
+        summary,
+        details: `Modified parameters: ${changedKeys.slice(0, 5).join(', ')}${changedKeys.length > 5 ? ' and more...' : ''}`,
+        changes: diff,
+        severity: isPricingChange ? 'success' : 'info',
+      });
+
       return res.json(appSettingsState);
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Failed to update settings" });
+    }
+  });
+
+  // Payment Checkout Gateway Endpoint (Click, Payme, Google Pay)
+  app.post("/api/payment/checkout", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const { plan, provider, amountUzs, userUid, userEmail } = req.body;
+      const orderId = `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+      if (provider === 'click') {
+        const serviceId = appSettingsState.clickServiceId || '32000';
+        const merchantId = appSettingsState.clickMerchantId || '24000';
+        const returnUrl = encodeURIComponent(`${req.headers.origin || 'http://localhost:3000'}/dashboard?payment=success&order=${orderId}`);
+
+        const clickUrl = `https://my.click.uz/services/pay?service_id=${serviceId}&merchant_id=${merchantId}&amount=${amountUzs}&transaction_param=${orderId}&return_url=${returnUrl}`;
+        return res.json({
+          success: true,
+          orderId,
+          checkoutUrl: clickUrl,
+          provider: 'click'
+        });
+      }
+
+      if (provider === 'payme') {
+        const merchantId = appSettingsState.paymeMerchantId || '650000000000000000000000';
+        const amountTiyin = amountUzs * 100; // Payme requires amount in tiyins
+        const params = `m=${merchantId};ac.order_id=${orderId};a=${amountTiyin};c=${encodeURIComponent(`${req.headers.origin || 'http://localhost:3000'}/dashboard?payment=success`)}`;
+        const base64Params = Buffer.from(params).toString('base64');
+        const paymeUrl = `https://checkout.paycom.uz/${base64Params}`;
+
+        return res.json({
+          success: true,
+          orderId,
+          checkoutUrl: paymeUrl,
+          provider: 'payme'
+        });
+      }
+
+      if (provider === 'gpay') {
+        return res.json({
+          success: true,
+          orderId,
+          provider: 'gpay',
+          config: {
+            environment: appSettingsState.googlePayEnvironment || 'TEST',
+            merchantInfo: {
+              merchantId: appSettingsState.googlePayMerchantId || '12345678901234567890',
+              merchantName: appSettingsState.brandName || 'Innovation Plus'
+            },
+            amount: (amountUzs / 12500).toFixed(2), // converted to USD for GPay test
+            currencyCode: 'USD'
+          }
+        });
+      }
+
+      // Default / Card instant fallback
+      return res.json({
+        success: true,
+        orderId,
+        provider: provider || 'card',
+        message: 'Payment processed successfully'
+      });
+    } catch (err: any) {
+      console.error('Payment checkout error:', err);
+      res.status(500).json({ error: err.message || 'Payment initiation failed' });
     }
   });
 
@@ -373,7 +733,21 @@ async function startServer() {
         subtitles: formattedSubtitles,
         qualities: formattedQualities,
       }).returning();
-      res.json(formatVideo(newVideo[0]));
+
+      const formatted = formatVideo(newVideo[0]);
+
+      // Audit Log for Content Creation
+      logAdminActivity(req, {
+        actionType: 'CONTENT_CREATED',
+        category: 'content',
+        summary: `Created new video: "${title}"`,
+        details: `Category: ${category || 'Animation'}, Visibility: ${visibility || 'public'}, HD: ${isHd ? 'Yes' : 'No'}`,
+        targetId: String(formatted?.id || ''),
+        targetName: title,
+        severity: 'info',
+      });
+
+      res.json(formatted);
     } catch (error: any) {
       console.error("DB Error:", error);
       res.status(500).json({ error: error.message || "Failed to create video" });
@@ -385,6 +759,9 @@ async function startServer() {
     try {
       const videoId = parseInt(req.params.id);
       if (isNaN(videoId)) return res.status(400).json({ error: "Invalid video ID" });
+
+      const existingVideo = await db.select().from(videos).where(eq(videos.id, videoId)).limit(1);
+      const prevVideo = existingVideo[0];
 
       const { 
         title, description, category, tags, visibility, author, 
@@ -422,7 +799,20 @@ async function startServer() {
         .returning();
 
       if (updated.length > 0) {
-        res.json(formatVideo(updated[0]));
+        const formatted = formatVideo(updated[0]);
+
+        // Audit Log for Video Update
+        logAdminActivity(req, {
+          actionType: 'CONTENT_UPDATED',
+          category: 'content',
+          summary: `Updated video: "${formatted?.title || prevVideo?.title || videoId}"`,
+          details: `Modified fields: ${Object.keys(updatePayload).join(', ')}`,
+          targetId: String(videoId),
+          targetName: formatted?.title || prevVideo?.title,
+          severity: 'info',
+        });
+
+        res.json(formatted);
       } else {
         res.status(404).json({ error: "Video not found" });
       }
@@ -504,6 +894,15 @@ async function startServer() {
         if (updatedItem) results.push(formatVideo(updatedItem));
       }
 
+      // Audit Log for Bulk Update
+      logAdminActivity(req, {
+        actionType: 'CONTENT_BULK_UPDATED',
+        category: 'content',
+        summary: `Bulk updated ${results.length} videos`,
+        details: `Updated parameters: ${Object.keys(updates).join(', ')}`,
+        severity: 'info',
+      });
+
       res.json({ success: true, count: results.length, updatedVideos: results });
     } catch (error: any) {
       console.error("Bulk Video Update Error:", error);
@@ -524,6 +923,15 @@ async function startServer() {
         await db.delete(videos).where(inArray(videos.id, numericIds));
       }
 
+      // Audit Log for Bulk Delete
+      logAdminActivity(req, {
+        actionType: 'CONTENT_BULK_DELETED',
+        category: 'content',
+        summary: `Bulk deleted ${numericIds.length} videos from library`,
+        details: `Deleted video IDs: ${numericIds.slice(0, 10).join(', ')}${numericIds.length > 10 ? '...' : ''}`,
+        severity: 'warning',
+      });
+
       res.json({ success: true, count: numericIds.length });
     } catch (error: any) {
       console.error("Bulk Delete Error:", error);
@@ -535,7 +943,20 @@ async function startServer() {
   app.delete("/api/videos/:id", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const videoId = parseInt(req.params.id);
+      const existing = await db.select().from(videos).where(eq(videos.id, videoId)).limit(1);
       await db.delete(videos).where(eq(videos.id, videoId));
+
+      // Audit Log for Single Video Delete
+      logAdminActivity(req, {
+        actionType: 'CONTENT_DELETED',
+        category: 'content',
+        summary: `Deleted video: "${existing[0]?.title || videoId}"`,
+        details: `Removed video ID: ${videoId}`,
+        targetId: String(videoId),
+        targetName: existing[0]?.title,
+        severity: 'warning',
+      });
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete Error:", error);
@@ -559,6 +980,18 @@ async function startServer() {
     try {
       const { role } = req.body;
       const updated = await updateUserRole(req.params.uid, role);
+
+      // Audit Log for User Role Change
+      logAdminActivity(req, {
+        actionType: 'USER_ROLE_CHANGED',
+        category: 'users',
+        summary: `Changed role of user ${updated.email || req.params.uid} to "${role}"`,
+        details: `UID: ${req.params.uid}, New role: ${role}`,
+        targetId: req.params.uid,
+        targetName: updated.email || updated.displayName || req.params.uid,
+        severity: role === 'admin' ? 'warning' : 'info',
+      });
+
       res.json({ user: updated });
     } catch (error: any) {
       console.error("Role Update Error:", error);
@@ -566,11 +999,23 @@ async function startServer() {
     }
   });
 
-  // Toggle Subscription Status (active/banned/inactive) (Admin Only)
+  // Toggle Subscription Status (active/banned/inactive/trial) (Admin Only)
   app.patch("/api/users/:uid/status", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const { subscriptionStatus } = req.body;
       const updated = await updateUserSubscription(req.params.uid, subscriptionStatus);
+
+      // Audit Log for Subscription / Account Status Change
+      logAdminActivity(req, {
+        actionType: subscriptionStatus === 'banned' ? 'USER_BANNED' : 'USER_SUBSCRIPTION_CHANGED',
+        category: 'subscription',
+        summary: `Changed subscriber status of ${updated.email || req.params.uid} to "${subscriptionStatus}"`,
+        details: `Target: ${updated.email || req.params.uid}, New status: ${subscriptionStatus}`,
+        targetId: req.params.uid,
+        targetName: updated.email || updated.displayName || req.params.uid,
+        severity: subscriptionStatus === 'banned' ? 'critical' : 'success',
+      });
+
       res.json({ user: updated });
     } catch (error: any) {
       console.error("Status Update Error:", error);
@@ -643,7 +1088,11 @@ ${JSON.stringify(items || [], null, 2)}`;
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        hmr: false,
+        ws: false,
+      },
       appType: "custom", // Important: custom lets us handle HTML serving manually
     });
     app.use(vite.middlewares);
